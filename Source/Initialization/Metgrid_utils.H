@@ -153,14 +153,14 @@ calc_rho_p (const int& kmax,
 
     // integrate from the top back down to get dry pressure and density.
       Pd_vec[kmax] = Pm_vec[kmax];
-    Rhod_vec[kmax] = 1.0/(R_d/p_0*Thetam_vec[kmax]*std::pow(Pd_vec[kmax]/p_0, -iGamma));
+    Rhod_vec[kmax] = 1.0/(R_d/p_0*Thetad_vec[kmax]*std::pow(Pd_vec[kmax]/p_0, -iGamma));
     for (int k=kmax-1; k>=0; k--) {
         amrex::Real dz = z_vec[k+1]-z_vec[k];
         Rhod_vec[k] = Rhod_vec[k+1]; // an initial guess.
         for (int it=0; it < maxiter; it++) {
             Pd_vec[k] = Pd_vec[k+1]+0.5*dz*(Rhod_vec[k]+Rhod_vec[k+1])*CONST_GRAV;
             if (Pd_vec[k] < 0.0) Pd_vec[k] = 0.0;
-            Rhod_vec[k] = 1.0/(R_d/p_0*Thetam_vec[k]*std::pow(Pd_vec[k]/p_0, -iGamma));
+            Rhod_vec[k] = 1.0/(R_d/p_0*Thetad_vec[k]*std::pow(Pd_vec[k]/p_0, -iGamma));
         } // it
     } // k
 }

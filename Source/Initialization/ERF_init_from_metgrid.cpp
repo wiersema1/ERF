@@ -351,6 +351,9 @@ ERF::init_from_metgrid (int lev)
                                      fabs_for_bcs, mask_c_arr);
     } // mf
 
+    // Set up boxes for lateral boundary arrays.
+    if (metgrid_bdy_width-1 <= metgrid_bdy_set_width) metgrid_bdy_set_width = metgrid_bdy_width;
+    if (metgrid_bdy_width == metgrid_bdy_set_width) metgrid_bdy_width += 1;
 
     // NOTE: fabs_for_bcs is defined over the whole domain on each rank.
     //       However, the operations needed to define the data on the ERF
@@ -500,7 +503,7 @@ ERF::init_from_metgrid (int lev)
                 xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
                 ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
             } else if (ivar == MetGridBdyVars::QV) {
-                multiply_rho = true;
+                multiply_rho = false;
                 xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
                 ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
             } // MetGridBdyVars::QV
