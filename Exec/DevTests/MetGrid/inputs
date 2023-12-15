@@ -1,5 +1,5 @@
 # ------------------  INPUTS TO MAIN PROGRAM  -------------------
-max_step = 100
+max_step = 10
 
 amrex.fpe_trap_invalid = 1
 amrex.fpe_trap_zero = 1
@@ -11,10 +11,10 @@ amr.n_cell           =   140 80 100
 
 geometry.is_periodic = 0 0 0
 
-xlo.type = "Outflow"
-xhi.type = "Outflow"
-ylo.type = "Outflow"
-yhi.type = "Outflow"
+xlo.type = "outflow"
+xhi.type = "outflow"
+ylo.type = "outflow"
+yhi.type = "outflow"
 zlo.type = "NoSlipWall"
 zhi.type = "SlipWall"
 
@@ -40,7 +40,7 @@ erf.check_int       = 100        # number of timesteps between checkpoints
 # PLOTFILES
 erf.plot_file_1     = plt        # prefix of plotfile name
 erf.plot_int_1      = 1          # number of timesteps between plotfiles
-erf.plot_vars_1     = qv RhoQv density dens_hse rhoadv_0 x_velocity y_velocity z_velocity pressure temp theta z_phys mapfac pres_hse pert_pres pert_dens KE QKE
+erf.plot_vars_1     = qt qp qv qc qi qrain qsnow qgraup density dens_hse rhoadv_0 x_velocity y_velocity z_velocity pressure temp theta z_phys mapfac pres_hse pert_pres pert_dens KE QKE
 
 # SOLVER CHOICE
 erf.alpha_T = 1.0

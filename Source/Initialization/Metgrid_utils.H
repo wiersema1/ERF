@@ -99,7 +99,6 @@ void
 calc_rho_p (const int& kmax,
             const int& flag_psfc,
             const amrex::Real& psfc,
-            amrex::Real* Thetad_vec,
             amrex::Real* Thetam_vec,
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
             amrex::Real* Q_vec,
@@ -121,29 +120,13 @@ calc_rho_p (const int& kmax,
         Pm_vec[0] = p_0*exp(-t_0/a+std::pow((std::pow(t_0/a, 2)-2.0*CONST_GRAV*z_vec[0]/(a*R_d)), 0.5));
     }
 
-    // calculate virtual potential temperature at the surface.
-    {
-#if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
-        amrex::Real qvf = 1.0+(R_v/R_d+1.0)*Q_vec[0];
-#else
-        amrex::Real qvf = 1.0;
-#endif
-        Thetam_vec[0] = Thetad_vec[0]*qvf;
-    }
-
     // calculate moist density at the surface.
     Rhom_vec[0] = 1.0/(R_d/p_0*Thetam_vec[0]*std::pow(Pm_vec[0]/p_0, -iGamma));
 
     // integrate from the surface to the top boundary.
     for (int k=1; k<=kmax; k++) {
         amrex::Real dz = z_vec[k]-z_vec[k-1];
-#if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
-        amrex::Real qvf = 1.0+(R_v/R_d+1.0)*Q_vec[k];
-#else
-        amrex::Real qvf = 1.0;
-#endif
-        Thetam_vec[k] = Thetad_vec[k]*qvf;
-          Rhom_vec[k] = Rhom_vec[k-1]; // an initial guess.
+        Rhom_vec[k] = Rhom_vec[k-1]; // an initial guess.
         for (int it=0; it<maxiter; it++) {
             Pm_vec[k] = Pm_vec[k-1]-0.5*dz*(Rhom_vec[k]+Rhom_vec[k-1])*CONST_GRAV;
             if (Pm_vec[k] < 0.0) Pm_vec[k] = 0.0;
@@ -153,14 +136,14 @@ calc_rho_p (const int& kmax,
 
     // integrate from the top back down to get dry pressure and density.
       Pd_vec[kmax] = Pm_vec[kmax];
-    Rhod_vec[kmax] = 1.0/(R_d/p_0*Thetad_vec[kmax]*std::pow(Pd_vec[kmax]/p_0, -iGamma));
+    Rhod_vec[kmax] = 1.0/(R_d/p_0*Thetam_vec[kmax]*std::pow(Pd_vec[kmax]/p_0, -iGamma));
     for (int k=kmax-1; k>=0; k--) {
         amrex::Real dz = z_vec[k+1]-z_vec[k];
         Rhod_vec[k] = Rhod_vec[k+1]; // an initial guess.
         for (int it=0; it < maxiter; it++) {
             Pd_vec[k] = Pd_vec[k+1]+0.5*dz*(Rhod_vec[k]+Rhod_vec[k+1])*CONST_GRAV;
             if (Pd_vec[k] < 0.0) Pd_vec[k] = 0.0;
-            Rhod_vec[k] = 1.0/(R_d/p_0*Thetad_vec[k]*std::pow(Pd_vec[k]/p_0, -iGamma));
+            Rhod_vec[k] = 1.0/(R_d/p_0*Thetam_vec[k]*std::pow(Pd_vec[k]/p_0, -iGamma));
         } // it
     } // k
 }

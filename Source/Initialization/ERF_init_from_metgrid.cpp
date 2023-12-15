@@ -235,7 +235,6 @@ ERF::init_from_metgrid (int lev)
 #else
     int MetGridBdyEnd = MetGridBdyVars::NumTypes-1;
 #endif
-    //amrex::Vector<amrex::Vector<amrex::MultiFab> > fabs_for_bcs;
     amrex::Vector<amrex::Vector<FArrayBox>> fabs_for_bcs;
     fabs_for_bcs.resize(ntimes);
     for (int it(0); it < ntimes; it++) {
@@ -476,7 +475,8 @@ ERF::init_from_metgrid (int lev)
     amrex::Box xlo_plane, xhi_plane, ylo_plane, yhi_plane;
     for (int it(0); it < ntimes; it++) {
 
-        const Array4<Real const>& R_bcs_arr = fabs_for_bcs[it][MetGridBdyVars::R].const_array();
+//        const Array4<Real const>& R_bcs_arr = fabs_for_bcs[it][MetGridBdyVars::R].const_array();
+//        const Array4<Real const>& R_bcs_arr = fabs_for_bcs[0][MetGridBdyVars::R].const_array();
 
         for (int ivar(MetGridBdyVars::U); ivar < MetGridBdyEnd; ivar++) {
 
@@ -484,7 +484,11 @@ ERF::init_from_metgrid (int lev)
             auto xhi_arr = bdy_data_xhi[it][ivar].array();
             auto ylo_arr = bdy_data_ylo[it][ivar].array();
             auto yhi_arr = bdy_data_yhi[it][ivar].array();
-            const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[it][ivar].const_array();
+//            const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[it][ivar].const_array();
+// ---------------------------------------------------------------------------------------
+// DJW: remove this after debugging is complete. This enforces steady boundary conditions.
+            const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[0][ivar].const_array();
+// ---------------------------------------------------------------------------------------
 
             if (ivar == MetGridBdyVars::U) {
                 multiply_rho = false;
@@ -511,26 +515,30 @@ ERF::init_from_metgrid (int lev)
             // west boundary
             amrex::ParallelFor(xlo_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
             {
-                amrex::Real Factor = (multiply_rho) ? R_bcs_arr(i,j,k) : 1.0;
-                xlo_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k)*Factor;
+//                amrex::Real Factor = (multiply_rho) ? R_bcs_arr(i,j,k) : 1.0;
+//                xlo_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k)*Factor;
+                xlo_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k);
             });
             // xvel at east boundary
             amrex::ParallelFor(xhi_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
             {
-                amrex::Real Factor = (multiply_rho) ? R_bcs_arr(i,j,k) : 1.0;
-                xhi_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k)*Factor;
+//                amrex::Real Factor = (multiply_rho) ? R_bcs_arr(i,j,k) : 1.0;
+//                xhi_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k)*Factor;
+                xhi_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k);
             });
             // xvel at south boundary
             amrex::ParallelFor(ylo_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
             {
-                amrex::Real Factor = (multiply_rho) ? R_bcs_arr(i,j,k) : 1.0;
-                ylo_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k)*Factor;
+//                amrex::Real Factor = (multiply_rho) ? R_bcs_arr(i,j,k) : 1.0;
+//                ylo_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k)*Factor;
+                ylo_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k);
             });
             // xvel at north boundary
             amrex::ParallelFor(yhi_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
             {
-                amrex::Real Factor = (multiply_rho) ? R_bcs_arr(i,j,k) : 1.0;
-                yhi_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k)*Factor;
+//                amrex::Real Factor = (multiply_rho) ? R_bcs_arr(i,j,k) : 1.0;
+//                yhi_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k)*Factor;
+                yhi_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k);
             });
 
         } // ivar
@@ -686,6 +694,15 @@ init_state_from_metgrid (const Real l_rdOcp,
         });
         }
 
+// ---------------------------------------------------------------------------------------
+// DJW: remove this after debugging is complete. This enforces quiescent conditions..
+        if (it == 0) {
+            x_vel_fab.template setVal<RunOn::Device>(0.0);
+            y_vel_fab.template setVal<RunOn::Device>(0.0);
+        }
+        fabs_for_bcs[it][MetGridBdyVars::U].template setVal<RunOn::Device>(0.0);
+        fabs_for_bcs[it][MetGridBdyVars::V].template setVal<RunOn::Device>(0.0);
+// ---------------------------------------------------------------------------------------
 
         // ********************************************************
         // W
@@ -699,45 +716,6 @@ init_state_from_metgrid (const Real l_rdOcp,
         // ********************************************************
         if (it == 0) { // update at initialization
             state_fab.template setVal<RunOn::Device>(0.0);
-        }
-
-
-        // ********************************************************
-        // theta
-        // ********************************************************
-        { // calculate potential temperature.
-            Box bx = NC_rhum_fab[it].box() & tbxc;
-            auto const temp  = NC_temp_fab[it].const_array();
-            auto const pres  = NC_pres_fab[it].const_array();
-            auto       theta = theta_fab[it].array();
-
-            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-            {
-                theta(i,j,k) = getThgivenPandT(temp(i,j,k),pres(i,j,k),l_rdOcp);
-                //theta(i,j,k) = 300.0; // TODO: Remove when not needed. Force an isothermal atmosphere for debugging.
-            });
-        }
-
-        // vertical interpolation of potential temperature.
-        {
-        Box bx2d = NC_temp_fab[it].box() & tbxc;
-        bx2d.setRange(2,0);
-        auto const orig_data = theta_fab[it].const_array();
-        auto const orig_z    = NC_ght_fab[it].const_array();
-        auto       new_data  = state_fab.array();
-        auto       bc_data   = fabs_for_bcs[it][MetGridBdyVars::T].array();
-        auto const new_z     = z_phys_nd_fab.const_array();
-
-        int kmax = amrex::ubound(tbxc).z;
-
-        ParallelFor(bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
-        {
-            for (int k = 0; k<=kmax; k++) {
-                Real Interp_Val = interpolate_column_metgrid(i,j,k,'M',0,orig_z,orig_data,new_z);
-                if (mask_c_arr(i,j,k)) bc_data(i,j,k,0)  = Interp_Val;
-                if (it==0) new_data(i,j,k,RhoTheta_comp) = Interp_Val;
-            }
-        });
         }
 
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
@@ -790,13 +768,46 @@ init_state_from_metgrid (const Real l_rdOcp,
         }
 #endif
 
-        // TODO: TEMPORARY CODE TO RUN QUIESCENT, REMOVE WHEN NOT NEEDED.
-//        if (it == 0) {
-//            x_vel_fab.template setVal<RunOn::Device>(0.0); // TODO: temporary code to initialize with quiescent atmosphere.
-//            y_vel_fab.template setVal<RunOn::Device>(0.0); // TODO: temporary code to initialize with quiescent atmosphere.
-//        }
-//        fabs_for_bcs[it][MetGridBdyVars::U].template setVal<RunOn::Device>(0.0); // TODO: temporary code to force with quiescent atmosphere.
-//        fabs_for_bcs[it][MetGridBdyVars::V].template setVal<RunOn::Device>(0.0); // TODO: temporary code to force with quiescent atmosphere.
+        // ********************************************************
+        // theta
+        // ********************************************************
+        { // calculate potential temperature.
+        Box bx = NC_rhum_fab[it].box() & tbxc;
+        auto const temp  = NC_temp_fab[it].const_array();
+        auto const pres  = NC_pres_fab[it].const_array();
+        auto       theta = theta_fab[it].array();
+
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            theta(i,j,k) = getThgivenPandT(temp(i,j,k),pres(i,j,k),l_rdOcp);
+// ---------------------------------------------------------------------------------------
+// DJW: remove this after debugging is complete. This enforces isothermal conditions..
+            //theta(i,j,k) = 300.0;
+// ---------------------------------------------------------------------------------------
+        });
+        }
+
+        // vertical interpolation of potential temperature.
+        {
+        Box bx2d = NC_temp_fab[it].box() & tbxc;
+        bx2d.setRange(2,0);
+        auto const orig_data = theta_fab[it].const_array();
+        auto const orig_z    = NC_ght_fab[it].const_array();
+        auto       new_data  = state_fab.array();
+        auto       bc_data   = fabs_for_bcs[it][MetGridBdyVars::T].array();
+        auto const new_z     = z_phys_nd_fab.const_array();
+        
+        int kmax = amrex::ubound(tbxc).z;
+
+        ParallelFor(bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
+        {
+            for (int k = 0; k<=kmax; k++) {
+                Real Interp_Val = interpolate_column_metgrid(i,j,k,'M',0,orig_z,orig_data,new_z);
+                if (mask_c_arr(i,j,k)) bc_data(i,j,k,0)  = Interp_Val;
+                if (it==0) new_data(i,j,k,RhoTheta_comp) = Interp_Val;
+            }
+        });
+        }
 
     } // it
 }
@@ -840,7 +851,6 @@ init_base_state_from_metgrid (const Real l_rdOcp,
 
     // Device vectors for columnwise operations
     Gpu::DeviceVector<Real>      z_vec_d(kmax+2,0); Real* z_vec      =      z_vec_d.data();
-    Gpu::DeviceVector<Real> Thetad_vec_d(kmax+1,0); Real* Thetad_vec = Thetad_vec_d.data();
     Gpu::DeviceVector<Real> Thetam_vec_d(kmax+1,0); Real* Thetam_vec = Thetam_vec_d.data();
     Gpu::DeviceVector<Real>   Rhod_vec_d(kmax+1,0); Real* Rhod_vec   =   Rhod_vec_d.data();
     Gpu::DeviceVector<Real>   Rhom_vec_d(kmax+1,0); Real* Rhom_vec   =   Rhom_vec_d.data();
@@ -874,14 +884,17 @@ init_base_state_from_metgrid (const Real l_rdOcp,
         {
             for (int k=0; k<=kmax; k++) {
                      z_vec[k] = new_z(i,j,k);
-                Thetad_vec[k] = new_data(i,j,k,RhoTheta_comp);
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
                     Q_vec[k] = new_data(i,j,k,RhoQ_comp);
+                    amrex::Real qvf = 1.0+(R_v/R_d+1.0)*Q_vec[0];
+#else
+                    amrex::Real qvf = 1.0;
 #endif
+                Thetam_vec[k] = new_data(i,j,k,RhoTheta_comp)*qvf;
             }
             z_vec[kmax+1] =  new_z(i,j,kmax+1);
 
-            calc_rho_p(kmax,flag_psfc_vec[0],orig_psfc(i,j,0),Thetad_vec,Thetam_vec,
+            calc_rho_p(kmax,flag_psfc_vec[0],orig_psfc(i,j,0),Thetam_vec,
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
                        Q_vec,
 #endif
@@ -937,15 +950,18 @@ init_base_state_from_metgrid (const Real l_rdOcp,
         amrex::ParallelFor(valid_bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
         {
             for (int k=0; k<=kmax; k++) {
-                     z_vec[k] = new_z(i,j,k);
-                Thetad_vec[k] = Theta_arr(i,j,k);
+                z_vec[k] = new_z(i,j,k);
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
-                    Q_vec[k] = Q_arr(i,j,k);
+                Q_vec[k] = Q_arr(i,j,k);
+                amrex::Real qvf = 1.0+(R_v/R_d+1.0)*Q_vec[0];
+#else
+                amrex::Real qvf = 1.0;
 #endif
+                Thetam_vec[k] = Theta_arr(i,j,k)*qvf;
             }
-            z_vec[kmax+1] =  new_z(i,j,kmax+1);
+            z_vec[kmax+1] = new_z(i,j,kmax+1);
 
-            calc_rho_p(kmax,flag_psfc_vec[it],orig_psfc(i,j,0),Thetad_vec,Thetam_vec,
+            calc_rho_p(kmax,flag_psfc_vec[it],orig_psfc(i,j,0),Thetam_vec,
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
                        Q_vec,
 #endif
@@ -958,7 +974,7 @@ init_base_state_from_metgrid (const Real l_rdOcp,
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
                     Q_arr(i,j,k)     = Rhod_vec[k]*Q_vec[k];
 #endif
-                    Theta_arr(i,j,k) = Rhod_vec[k]*Thetad_vec[k];
+                    Theta_arr(i,j,k) = Rhod_vec[k]*Theta_arr(i,j,k);
                   }
             } // k
         });
