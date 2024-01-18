@@ -26,10 +26,6 @@
 #include <AMReX_MemProfiler.H>
 #endif
 
-#ifdef ERF_USE_PARTICLES
-#include "ParticleData.H"
-#endif
-
 #include "prob_common.H"
 
 #include <IndexDefines.H>
@@ -44,9 +40,11 @@
 #include <ERF_PhysBCFunct.H>
 #include <ERF_FillPatcher.H>
 
-#ifdef ERF_USE_MOISTURE
-#include "Microphysics.H"
+#ifdef ERF_USE_PARTICLES
+#include "ParticleData.H"
 #endif
+
+#include "Microphysics.H"
 
 #ifdef ERF_USE_RRTMGP
 #include "Radiation.H"
@@ -215,10 +213,8 @@ public:
                          amrex::Real dt, amrex::Real time,
                          amrex::InterpFaceRegister* ifr);
 
-#if defined(ERF_USE_MOISTURE)
     void advance_microphysics (int lev, amrex::MultiFab& cons_in,
                                const amrex::Real& dt_advance);
-#endif
 
 #if defined(ERF_USE_RRTMGP)
     void advance_radiation (int lev,
@@ -306,14 +302,14 @@ public:
 #ifdef ERF_USE_NETCDF
     void fill_from_wrfbdy (const amrex::Vector<amrex::MultiFab*>& mfs,
                            amrex::Real time,
-                           bool cons_only = false,
-                           int icomp_cons = 0,
-                           int ncomp_cons = NVAR);
+                           bool cons_only,
+                           int icomp_cons,
+                           int ncomp_cons);
     void fill_from_metgrid (const amrex::Vector<amrex::MultiFab*>& mfs,
                            amrex::Real time,
-                           bool cons_only = false,
-                           int icomp_cons = 0,
-                           int ncomp_cons = NVAR);
+                           bool cons_only,
+                           int icomp_cons,
+                           int ncomp_cons);
 #endif
 
 #ifdef ERF_USE_NETCDF
@@ -362,11 +358,9 @@ private:
     // works for single level and 2-level cases (fill fine grid ghost by interpolating from coarse)
     void FillPatch (int lev, amrex::Real time, const amrex::Vector<amrex::MultiFab*>& mf, bool fillset=true);
 
-#if defined(ERF_USE_MOISTURE)
     // Compute a new MultiFab by copying from valid region and filling ghost cells -
     // works for single level and 2-level cases (fill fine grid ghost by interpolating from coarse)
     void FillPatchMoistVars (int lev, amrex::MultiFab& mf);
-#endif
 
     // compute new multifabs by copying in data from valid region and filling ghost cells
     // works for single level and 2-level cases (fill fine grid ghost by interpolating from coarse)
@@ -388,11 +382,6 @@ private:
     // advance a level by dt
     // includes a recursive call for finer levels
     void timeStep (int lev, amrex::Real time, int iteration);
-
-#if defined(ERF_USE_WARM_NO_PRECIP)
-    void condensation_source (amrex::MultiFab& source, amrex::MultiFab& S_new,
-                              amrex::Real tau_cond, amrex::Real c_p);
-#endif
 
     // advance a single level for a single time step
     void Advance (int lev, amrex::Real time, amrex::Real dt_lev, int iteration, int ncycle);
@@ -535,11 +524,8 @@ private:
     amrex::Vector<amrex::MultiFab> rW_old;
     amrex::Vector<amrex::MultiFab> rW_new;
 
-#if defined(ERF_USE_MOISTURE)
-    std::string moisture_model = "NullMoist";
     Microphysics micro;
-    amrex::Vector<amrex::MultiFab> qmoist; // This has 6 components: qv, qc, qi, qr, qs, qg
-#endif
+    amrex::Vector<amrex::Vector<amrex::MultiFab*>> qmoist; // (lev,ncomp) This has up to 6 components: qv, qc, qi, qr, qs, qg
 
 #if defined(ERF_USE_RRTMGP)
     Radiation rad;
@@ -570,7 +556,7 @@ private:
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> SFS_diss_lev;
 
     // Terrain / grid stretching
-    amrex::Vector<amrex::Real> zlevels_stag;
+    amrex::Vector<amrex::Real> zlevels_stag; // nominal height levels
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> z_phys_nd;
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> z_phys_cc;
     amrex::Vector<std::unique_ptr<amrex::MultiFab>>   detJ_cc;
@@ -603,10 +589,10 @@ private:
     amrex::Array<std::string,2*AMREX_SPACEDIM> domain_bc_type;
 
     // These hold the Dirichlet values at walls which need them ...
-    amrex::Array<amrex::Array<amrex::Real, AMREX_SPACEDIM*2>,AMREX_SPACEDIM+NVAR> m_bc_extdir_vals;
+    amrex::Array<amrex::Array<amrex::Real, AMREX_SPACEDIM*2>, AMREX_SPACEDIM+NVAR_max> m_bc_extdir_vals;
 
     // These hold the Neumann values at walls which need them ...
-    amrex::Array<amrex::Array<amrex::Real, AMREX_SPACEDIM*2>,AMREX_SPACEDIM+NVAR> m_bc_neumann_vals;
+    amrex::Array<amrex::Array<amrex::Real, AMREX_SPACEDIM*2>, AMREX_SPACEDIM+NVAR_max> m_bc_neumann_vals;
 
     // These are the "physical" boundary condition types (e.g. "inflow")
     amrex::GpuArray<ERF_BC, AMREX_SPACEDIM*2> phys_bc_type;
@@ -659,33 +645,23 @@ private:
 
     amrex::Vector<std::string> plot_var_names_1;
     amrex::Vector<std::string> plot_var_names_2;
-    const amrex::Vector<std::string> cons_names     {"density", "rhotheta", "rhoKE", "rhoQKE", "rhoadv_0"
-#if defined(ERF_USE_MOISTURE)
-                                                     ,"rhoQt", "rhoQp"
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-                                                     ,"rhoQv", "rhoQc"
-#endif
-                                                     };
+    const amrex::Vector<std::string> cons_names     {"density", "rhotheta", "rhoKE", "rhoQKE", "rhoadv_0",
+                                                     "rhoQ1", "rhoQ2", "rhoQ3"};
 
     // Note that the order of variable names here must match the order in Derive.cpp
-    const amrex::Vector<std::string> derived_names {"pressure", "soundspeed", "temp", "theta", "KE", "QKE", "scalar",
-                                                    "pres_hse", "dens_hse", "pert_pres", "pert_dens",
+    const amrex::Vector<std::string> derived_names {"soundspeed", "temp", "theta", "KE", "QKE", "scalar",
+                                                    "pres_hse", "dens_hse", "pressure", "pert_pres", "pert_dens", "eq_pot_temp",
                                                     "dpdx", "dpdy", "pres_hse_x", "pres_hse_y",
                                                     "z_phys", "detJ" , "mapfac",
                                                     // eddy viscosity
                                                     "Kmv","Kmh",
                                                     // eddy diffusivity of heat
-                                                    "Khv","Khh"
-#if defined(ERF_USE_MOISTURE)
+                                                    "Khv","Khh",
+                                                    // mynn pbl lengthscale
+                                                    "Lpbl"
                                                      ,"qt", "qp", "qv", "qc", "qi", "qrain", "qsnow", "qgraup"
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-                                                     ,"qv", "qc"
-#endif
 #ifdef ERF_COMPUTE_ERROR
                                                     ,"xvel_err", "yvel_err", "zvel_err", "pp_err"
-#endif
-#ifdef ERF_USE_PARTICLES
-                                                    ,"tracer_particle_count", "hydro_particle_count"
 #endif
                                                    };
 
@@ -693,8 +669,25 @@ private:
     static SolverChoice solverChoice;
 
 #ifdef ERF_USE_PARTICLES
-    // Particle info
+    // Particle container with all particle species
     static ParticleData particleData;
+
+    // variables and functions for tracers particles
+    bool  m_use_tracer_particles; /*!< tracer particles that advect with flow */
+    bool  m_use_hydro_particles;  /*!< tracer particles that fall with gravity */
+
+    /*! Read tracer and hydro particles parameters */
+    void readTracersParams();
+
+    /*! Initialize tracer and hydro particles */
+    void initializeTracers ( amrex::ParGDBBase*,
+                             const amrex::Vector<std::unique_ptr<amrex::MultiFab>>& );
+    /*! Evolve tracers and hydro particles */
+    void evolveTracers( int,
+                        amrex::Real,
+                        amrex::Vector<amrex::Vector<amrex::MultiFab>>&,
+                        const amrex::Vector<std::unique_ptr<amrex::MultiFab>>& );
+
 #endif
 
     static int verbose;
@@ -708,6 +701,10 @@ private:
 
     // init_type:  "ideal", "real", "input_sounding", "metgrid" or ""
     static std::string init_type;
+
+    // use_real_bcs: only true if 1) ( (init_type == real) or (init_type == metgrid) )
+    //                        AND 2) we want to use the bc's from the WRF bdy file
+    static bool use_real_bcs;
 
     // NetCDF initialization (wrfinput) file
     static amrex::Vector<amrex::Vector<std::string>> nc_init_file;
@@ -763,17 +760,14 @@ private:
     amrex::Vector<amrex::Real> h_havg_density;
     amrex::Vector<amrex::Real> h_havg_temperature;
     amrex::Vector<amrex::Real> h_havg_pressure;
-#ifdef ERF_USE_MOISTURE
     amrex::Vector<amrex::Real> h_havg_qv;
     amrex::Vector<amrex::Real> h_havg_qc;
-#endif
+
     amrex::Gpu::DeviceVector<amrex::Real> d_havg_density;
     amrex::Gpu::DeviceVector<amrex::Real> d_havg_temperature;
     amrex::Gpu::DeviceVector<amrex::Real> d_havg_pressure;
-#ifdef ERF_USE_MOISTURE
     amrex::Gpu::DeviceVector<amrex::Real> d_havg_qv;
     amrex::Gpu::DeviceVector<amrex::Real> d_havg_qc;
-#endif
 
     void refinement_criteria_setup ();
 
@@ -805,32 +799,26 @@ private:
             if (
                  (advChoice.dycore_horiz_adv_type    == AdvType::Centered_6th)
               || (advChoice.dycore_vert_adv_type     == AdvType::Centered_6th)
-#if defined(ERF_USE_MOISTURE) or defined(ERF_USE_WARM_NO_PRECIP)
               || (advChoice.moistscal_horiz_adv_type == AdvType::Centered_6th)
               || (advChoice.moistscal_horiz_adv_type == AdvType::Centered_6th)
-#endif
               || (advChoice.dryscal_horiz_adv_type   == AdvType::Centered_6th)
               || (advChoice.dryscal_vert_adv_type    == AdvType::Centered_6th) )
             { return 3; }
             else if (
                  (advChoice.dycore_horiz_adv_type    == AdvType::Upwind_5th)
               || (advChoice.dycore_vert_adv_type     == AdvType::Upwind_5th)
-#if defined(ERF_USE_MOISTURE) or defined(ERF_USE_WARM_NO_PRECIP)
               || (advChoice.moistscal_horiz_adv_type == AdvType::Upwind_5th)
               || (advChoice.moistscal_horiz_adv_type == AdvType::Upwind_5th)
-#endif
               || (advChoice.dryscal_horiz_adv_type   == AdvType::Upwind_5th)
               || (advChoice.dryscal_vert_adv_type    == AdvType::Upwind_5th) )
             { return 3; }
             else if (
                   (advChoice.dryscal_horiz_adv_type   == AdvType::Weno_5)
                || (advChoice.dryscal_vert_adv_type    == AdvType::Weno_5)
-#if defined(ERF_USE_MOISTURE) or defined(ERF_USE_WARM_NO_PRECIP)
                || (advChoice.moistscal_horiz_adv_type == AdvType::Weno_5)
                || (advChoice.moistscal_vert_adv_type  == AdvType::Weno_5)
                || (advChoice.moistscal_horiz_adv_type == AdvType::Weno_5Z)
                || (advChoice.moistscal_vert_adv_type  == AdvType::Weno_5Z)
-#endif
                || (advChoice.dryscal_horiz_adv_type   == AdvType::Weno_5Z)
                || (advChoice.dryscal_vert_adv_type    == AdvType::Weno_5Z) )
             { return 3; }

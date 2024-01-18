@@ -40,6 +40,7 @@ namespace MicVar_Kess {
       qcl,  // cloud water
       qpl,  // precip rain
       qpi,  // precip ice
+      qg,   // graupel
       // temporary variable
       omega,
       NumVars
@@ -51,109 +52,122 @@ namespace MicVar_Kess {
 //
 class Kessler : public NullMoist {
 
- using FabPtr = std::shared_ptr<amrex::MultiFab>;
+    using FabPtr = std::shared_ptr<amrex::MultiFab>;
 
- public:
-  // constructor
-  Kessler () {}
+public:
+    // constructor
+    Kessler () {}
 
-  // destructor
-  virtual ~Kessler () = default;
+    // destructor
+    virtual ~Kessler () = default;
 
-  // cloud physics
-  void AdvanceKessler ();
+    // cloud physics
+    void AdvanceKessler ();
 
-  // diagnose
-  void Diagnose () override;
+    // diagnose
+    void Diagnose () override;
 
-  // Set up for first time
-  void
-  define (SolverChoice& sc) override
-  {
-      docloud = sc.do_cloud;
-      doprecip = sc.do_precip;
-      m_fac_cond = lcond / sc.c_p;
-      m_fac_fus = lfus / sc.c_p;
-      m_fac_sub = lsub / sc.c_p;
-      m_gOcp = CONST_GRAV / sc.c_p;
-      m_axis = sc.ave_plane;
-  }
+    // Set up for first time
+    void
+    Define (SolverChoice& sc) override
+    {
+        docloud = sc.do_cloud;
+        doprecip = sc.do_precip;
+        m_fac_cond = lcond / sc.c_p;
+        m_fac_fus = lfus / sc.c_p;
+        m_fac_sub = lsub / sc.c_p;
+        m_gOcp = CONST_GRAV / sc.c_p;
+        m_axis = sc.ave_plane;
+    }
 
-  // init
-  void
-  Init (const amrex::MultiFab& cons_in,
-              amrex::MultiFab& qmoist,
-        const amrex::BoxArray& grids,
-        const amrex::Geometry& geom,
-        const amrex::Real& dt_advance) override;
+    // init
+    void
+    Init (const amrex::MultiFab& cons_in,
+          const amrex::BoxArray& grids,
+          const amrex::Geometry& geom,
+          const amrex::Real& dt_advance) override;
 
-  // update ERF variables
-  void
-  Update (amrex::MultiFab& cons_in,
-          amrex::MultiFab& qmoist) override;
+    // Copy state into micro vars
+    void
+    Copy_State_to_Micro (const amrex::MultiFab& cons_in) override;
 
-  // wrapper to do all the updating
-  void
-  Advance ( ) override
-  {
-      this->AdvanceKessler();
-      this->Diagnose();
-  }
+    // Copy state into micro vars
+    void
+    Copy_Micro_to_State (amrex::MultiFab& cons_in) override;
 
- private:
-  // geometry
-  amrex::Geometry m_geom;
-  // valid boxes on which to evolve the solution
-  amrex::BoxArray m_gtoe;
+    // update micro vars
+    void
+    Update_Micro_Vars (amrex::MultiFab& cons_in) override
+    {
+        this->Copy_State_to_Micro(cons_in);
+        this->Diagnose();
+    }
 
-  // timestep
-  amrex::Real dt;
+    // update state vars
+    void
+    Update_State_Vars (amrex::MultiFab& cons_in) override
+    {
+        this->Copy_Micro_to_State(cons_in);
+    }
 
-  // number of vertical levels
-  int nlev, zlo, zhi;
+    // wrapper to advance micro vars
+    void
+    Advance (const amrex::Real& dt_advance) override
+    {
+        dt = dt_advance;
 
-  // plane average axis
-  int m_axis;
+        this->AdvanceKessler();
+        this->Diagnose();
+    }
 
-  // model options
-  bool docloud, doprecip;
+    amrex::MultiFab*
+    Qmoist_Ptr (const int& varIdx) override
+    {
+        AMREX_ALWAYS_ASSERT(varIdx < m_qmoist_size);
+        return mic_fab_vars[MicVarMap[varIdx]].get();
+    }
 
-  // constants
-  amrex::Real m_fac_cond;
-  amrex::Real m_fac_fus;
-  amrex::Real m_fac_sub;
-  amrex::Real m_gOcp;
+    int
+    Qmoist_Size () override { return Kessler::m_qmoist_size; }
 
-  // microphysics parameters/coefficients
-  amrex::TableData<amrex::Real, 1> accrrc;
-  amrex::TableData<amrex::Real, 1> accrsi;
-  amrex::TableData<amrex::Real, 1> accrsc;
-  amrex::TableData<amrex::Real, 1> coefice;
-  amrex::TableData<amrex::Real, 1> evaps1;
-  amrex::TableData<amrex::Real, 1> evaps2;
-  amrex::TableData<amrex::Real, 1> accrgi;
-  amrex::TableData<amrex::Real, 1> accrgc;
-  amrex::TableData<amrex::Real, 1> evapg1;
-  amrex::TableData<amrex::Real, 1> evapg2;
-  amrex::TableData<amrex::Real, 1> evapr1;
-  amrex::TableData<amrex::Real, 1> evapr2;
+    int
+    Qstate_Size () override { return Kessler::m_qstate_size; }
 
-  // vertical plane average data
-  amrex::TableData<amrex::Real, 1> rho1d;
-  amrex::TableData<amrex::Real, 1> pres1d;
-  amrex::TableData<amrex::Real, 1> tabs1d;
-  amrex::TableData<amrex::Real, 1> qt1d;
-  amrex::TableData<amrex::Real, 1> qv1d;
-  amrex::TableData<amrex::Real, 1> qn1d;
+private:
+    // Number of qmoist variables (qt, qv, qcl, qci, qp, qpl, qpi)
+    int m_qmoist_size = 7;
 
-  // independent variables
-  amrex::Array<FabPtr, MicVar_Kess::NumVars> mic_fab_vars;
+    // Number of qstate variables
+    int m_qstate_size = 3;
 
-  amrex::TableData<amrex::Real, 1> gamaz;
-  amrex::TableData<amrex::Real, 1> zmid; // mid value of vertical coordinate in physical domain
+    // MicVar map (Qmoist indices -> MicVar enum)
+    amrex::Vector<int> MicVarMap;
 
-  // data (output)
-  amrex::TableData<amrex::Real, 1> qifall;
-  amrex::TableData<amrex::Real, 1> tlatqi;
+    // geometry
+    amrex::Geometry m_geom;
+
+    // valid boxes on which to evolve the solution
+    amrex::BoxArray m_gtoe;
+
+    // timestep
+    amrex::Real dt;
+
+    // number of vertical levels
+    int nlev, zlo, zhi;
+
+    // plane average axis
+    int m_axis;
+
+    // model options
+    bool docloud, doprecip;
+
+    // constants
+    amrex::Real m_fac_cond;
+    amrex::Real m_fac_fus;
+    amrex::Real m_fac_sub;
+    amrex::Real m_gOcp;
+
+    // independent variables
+    amrex::Array<FabPtr, MicVar_Kess::NumVars> mic_fab_vars;
 };
 #endif

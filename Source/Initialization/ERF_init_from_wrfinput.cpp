@@ -7,6 +7,7 @@
 #include <ERF_Constants.H>
 #include <Utils.H>
 #include <prob_common.H>
+#include <DataStruct.H>
 
 using namespace amrex;
 
@@ -22,14 +23,12 @@ read_from_wrfinput (int lev, const Box& domain, const std::string& fname,
                     FArrayBox& NC_MSFM_fab, FArrayBox& NC_SST_fab,
                     FArrayBox& NC_C1H_fab , FArrayBox& NC_C2H_fab,
                     FArrayBox& NC_RDNW_fab,
-#if defined(ERF_USE_MOISTURE)
                     FArrayBox& NC_QVAPOR_fab,
                     FArrayBox& NC_QCLOUD_fab,
                     FArrayBox& NC_QRAIN_fab,
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-#endif
                     FArrayBox& NC_PH_fab  , FArrayBox& NC_PHB_fab,
-                    FArrayBox& NC_ALB_fab , FArrayBox& NC_PB_fab);
+                    FArrayBox& NC_ALB_fab , FArrayBox& NC_PB_fab,
+                    MoistureType moisture_type);
 
 Real
 read_from_wrfbdy (const std::string& nc_bdy_file, const Box& domain,
@@ -43,9 +42,6 @@ void
 convert_wrfbdy_data (int which, const Box& domain,
                      Vector<Vector<FArrayBox>>& bdy_data,
                      const FArrayBox& NC_MUB_fab,
-                     const FArrayBox& NC_MSFU_fab,
-                     const FArrayBox& NC_MSFV_fab,
-                     const FArrayBox& NC_MSFM_fab,
                      const FArrayBox& NC_PH_fab,
                      const FArrayBox& NC_PHB_fab,
                      const FArrayBox& NC_C1H_fab,
@@ -60,17 +56,15 @@ void
 init_state_from_wrfinput (int lev, FArrayBox& state_fab,
                           FArrayBox& x_vel_fab, FArrayBox& y_vel_fab,
                           FArrayBox& z_vel_fab,
-#if defined(ERF_USE_MOISTURE)
                           const Vector<FArrayBox>& NC_QVAPOR_fab,
                           const Vector<FArrayBox>& NC_QCLOUD_fab,
                           const Vector<FArrayBox>& NC_QRAIN_fab,
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-#endif
                           const Vector<FArrayBox>& NC_xvel_fab,
                           const Vector<FArrayBox>& NC_yvel_fab,
                           const Vector<FArrayBox>& NC_zvel_fab,
                           const Vector<FArrayBox>& NC_rho_fab,
-                          const Vector<FArrayBox>& NC_rhotheta_fab);
+                          const Vector<FArrayBox>& NC_rhotheta_fab,
+                          MoistureType moisture_type);
 
 void
 init_msfs_from_wrfinput (int lev, FArrayBox& msfu_fab,
@@ -117,12 +111,9 @@ ERF::init_from_wrfinput (int lev)
     Vector<FArrayBox> NC_PHB_fab  ; NC_PHB_fab.resize(num_boxes_at_level[lev]);
     Vector<FArrayBox> NC_ALB_fab  ; NC_ALB_fab.resize(num_boxes_at_level[lev]);
     Vector<FArrayBox> NC_PB_fab   ; NC_PB_fab.resize(num_boxes_at_level[lev]);
-#if defined(ERF_USE_MOISTURE)
     Vector<FArrayBox> NC_QVAPOR_fab; NC_QVAPOR_fab.resize(num_boxes_at_level[lev]);
     Vector<FArrayBox> NC_QCLOUD_fab; NC_QCLOUD_fab.resize(num_boxes_at_level[lev]);
     Vector<FArrayBox> NC_QRAIN_fab ; NC_QRAIN_fab.resize(num_boxes_at_level[lev]);
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-#endif
 
     // amrex::Print() << "Building initial FABS from file " << nc_init_file[lev][idx] << std::endl;
     if (nc_init_file.empty())
@@ -135,11 +126,9 @@ ERF::init_from_wrfinput (int lev)
                            NC_rhop_fab[idx], NC_rhoth_fab[idx], NC_MUB_fab[idx],
                            NC_MSFU_fab[idx], NC_MSFV_fab[idx],  NC_MSFM_fab[idx],
                            NC_SST_fab[idx],  NC_C1H_fab[idx],   NC_C2H_fab[idx],  NC_RDNW_fab[idx],
-#if defined(ERF_USE_MOISTURE)
                            NC_QVAPOR_fab[idx], NC_QCLOUD_fab[idx], NC_QRAIN_fab[idx],
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-#endif
-                           NC_PH_fab[idx],NC_PHB_fab[idx],NC_ALB_fab[idx],NC_PB_fab[idx]);
+                           NC_PH_fab[idx],NC_PHB_fab[idx],NC_ALB_fab[idx],NC_PB_fab[idx],
+                           solverChoice.moisture_type);
     }
 
     auto& lev_new = vars_new[lev];
@@ -158,12 +147,9 @@ ERF::init_from_wrfinput (int lev)
         FArrayBox &zvel_fab = lev_new[Vars::zvel][mfi];
 
         init_state_from_wrfinput(lev, cons_fab, xvel_fab, yvel_fab, zvel_fab,
-#if defined(ERF_USE_MOISTURE)
                                  NC_QVAPOR_fab, NC_QCLOUD_fab, NC_QRAIN_fab,
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-#endif
                                  NC_xvel_fab, NC_yvel_fab, NC_zvel_fab,
-                                 NC_rho_fab, NC_rhoth_fab);
+                                 NC_rho_fab, NC_rhoth_fab, solverChoice.moisture_type);
     } // mf
 
 #ifdef _OPENMP
@@ -234,23 +220,19 @@ ERF::init_from_wrfinput (int lev)
         if (wrfbdy_width == wrfbdy_set_width) wrfbdy_width += 1;
 
         convert_wrfbdy_data(0,domain,bdy_data_xlo,
-                            NC_MUB_fab[0], NC_MSFU_fab[0], NC_MSFV_fab[0], NC_MSFM_fab[0],
-                            NC_PH_fab[0] , NC_PHB_fab[0],
+                            NC_MUB_fab[0], NC_PH_fab[0] , NC_PHB_fab[0],
                             NC_C1H_fab[0], NC_C2H_fab[0], NC_RDNW_fab[0],
                             NC_xvel_fab[0],NC_yvel_fab[0],NC_rho_fab[0],NC_rhoth_fab[0]);
         convert_wrfbdy_data(1,domain,bdy_data_xhi,
-                            NC_MUB_fab[0], NC_MSFU_fab[0], NC_MSFV_fab[0], NC_MSFM_fab[0],
-                            NC_PH_fab[0] , NC_PHB_fab[0],
+                            NC_MUB_fab[0], NC_PH_fab[0] , NC_PHB_fab[0],
                             NC_C1H_fab[0], NC_C2H_fab[0], NC_RDNW_fab[0],
                             NC_xvel_fab[0],NC_yvel_fab[0],NC_rho_fab[0],NC_rhoth_fab[0]);
         convert_wrfbdy_data(2,domain,bdy_data_ylo,
-                            NC_MUB_fab[0], NC_MSFU_fab[0], NC_MSFV_fab[0], NC_MSFM_fab[0],
-                            NC_PH_fab[0] , NC_PHB_fab[0],
+                            NC_MUB_fab[0], NC_PH_fab[0] , NC_PHB_fab[0],
                             NC_C1H_fab[0], NC_C2H_fab[0], NC_RDNW_fab[0],
                             NC_xvel_fab[0],NC_yvel_fab[0],NC_rho_fab[0],NC_rhoth_fab[0]);
         convert_wrfbdy_data(3,domain,bdy_data_yhi,
-                            NC_MUB_fab[0], NC_MSFU_fab[0], NC_MSFV_fab[0], NC_MSFM_fab[0],
-                            NC_PH_fab[0] , NC_PHB_fab[0],
+                            NC_MUB_fab[0], NC_PH_fab[0] , NC_PHB_fab[0],
                             NC_C1H_fab[0], NC_C2H_fab[0], NC_RDNW_fab[0],
                             NC_xvel_fab[0],NC_yvel_fab[0],NC_rho_fab[0],NC_rhoth_fab[0]);
     }
@@ -280,17 +262,15 @@ init_state_from_wrfinput (int lev,
                           FArrayBox& x_vel_fab,
                           FArrayBox& y_vel_fab,
                           FArrayBox& z_vel_fab,
-#if defined(ERF_USE_MOISTURE)
                           const Vector<FArrayBox>& NC_QVAPOR_fab,
                           const Vector<FArrayBox>& NC_QCLOUD_fab,
                           const Vector<FArrayBox>& NC_QRAIN_fab,
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-#endif
                           const Vector<FArrayBox>& NC_xvel_fab,
                           const Vector<FArrayBox>& NC_yvel_fab,
                           const Vector<FArrayBox>& NC_zvel_fab,
                           const Vector<FArrayBox>& NC_rho_fab,
-                          const Vector<FArrayBox>& NC_rhotheta_fab)
+                          const Vector<FArrayBox>& NC_rhotheta_fab,
+                          MoistureType moisture_type)
 {
     int nboxes = NC_xvel_fab.size();
     for (int idx = 0; idx < nboxes; idx++)
@@ -313,19 +293,18 @@ init_state_from_wrfinput (int lev,
 
         // This copies the density
         state_fab.template copy<RunOn::Device>(NC_rho_fab[idx], 0, Rho_comp, 1);
-
         // This copies (rho*theta)
         state_fab.template copy<RunOn::Device>(NC_rhotheta_fab[idx], 0, RhoTheta_comp, 1);
 
-#if defined(ERF_USE_MOISTURE)
-        state_fab.template copy<RunOn::Device>(NC_QVAPOR_fab[idx], 0, RhoQt_comp, 1);
-        state_fab.template plus<RunOn::Device>(NC_QCLOUD_fab[idx], 0, RhoQt_comp, 1);
-        state_fab.template mult<RunOn::Device>(NC_rho_fab[idx]   , 0, RhoQt_comp, 1);
+        if (moisture_type != MoistureType::None)
+        {
+            state_fab.template copy<RunOn::Device>(NC_QVAPOR_fab[idx], 0, RhoQ1_comp, 1);
+            state_fab.template plus<RunOn::Device>(NC_QCLOUD_fab[idx], 0, RhoQ1_comp, 1);
+            state_fab.template mult<RunOn::Device>(NC_rho_fab[idx]   , 0, RhoQ1_comp, 1);
 
-        state_fab.template copy<RunOn::Device>(NC_QRAIN_fab[idx], 0, RhoQp_comp, 1);
-        state_fab.template mult<RunOn::Device>(NC_rho_fab[idx]  , 0, RhoQp_comp, 1);
-# elif defined(ERF_USE_WARM_NO_PRECIP)
-#endif
+            state_fab.template copy<RunOn::Device>(NC_QRAIN_fab[idx], 0, RhoQ2_comp, 1);
+            state_fab.template mult<RunOn::Device>(NC_rho_fab[idx]  , 0, RhoQ2_comp, 1);
+        }
     } // idx
 }
 
@@ -395,7 +374,7 @@ init_base_state_from_wrfinput (int lev, const Box& valid_bx, const Real l_rdOcp,
         const Array4<Real const>& alpha_arr = NC_ALB_fab[idx].const_array();
         const Array4<Real const>& nc_pb_arr = NC_PB_fab[idx].const_array();
 
-        amrex::ParallelFor(valid_bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+        ParallelFor(valid_bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
             p_hse_arr(i,j,k)  = nc_pb_arr(i,j,k);
             pi_hse_arr(i,j,k) = getExnergivenP(p_hse_arr(i,j,k), l_rdOcp);
             r_hse_arr(i,j,k)  = 1.0 / alpha_arr(i,j,k);
@@ -442,7 +421,7 @@ init_terrain_from_wrfinput (int lev, const Box& domain, FArrayBox& z_phys,
         //
         // We must be careful not to read out of bounds of the WPS data
         //
-        amrex::ParallelFor(z_phys_box, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+        ParallelFor(z_phys_box, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
             int ii = std::max(std::min(i,ihi-1),ilo+1);
             int jj = std::max(std::min(j,jhi-1),jlo+1);
             if (k < 0) {

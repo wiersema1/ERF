@@ -4,6 +4,9 @@
     auto cons_to_prim = [&](const MultiFab& cons_state, int ng)
     {
         BL_PROFILE("cons_to_prim()");
+
+        int ncomp_prim = S_prim.nComp();
+
 #ifdef _OPENMP
 #pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
 #endif
@@ -15,12 +18,13 @@
           const Array4<      Real>& pi_stage_arr = pi_stage.array(mfi);
           const Real rdOcp = solverChoice.rdOcp;
 
-          amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+          amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+          {
             Real rho       = cons_arr(i,j,k,Rho_comp);
             Real rho_theta = cons_arr(i,j,k,RhoTheta_comp);
             prim_arr(i,j,k,PrimTheta_comp) = rho_theta / rho;
             pi_stage_arr(i,j,k) = getExnergivenRTh(rho_theta, rdOcp);
-            for (int n = 1; n < NUM_PRIM; ++n) {
+            for (int n = 1; n < ncomp_prim; ++n) {
               prim_arr(i,j,k,PrimTheta_comp + n) = cons_arr(i,j,k,RhoTheta_comp + n) / rho;
             }
           });

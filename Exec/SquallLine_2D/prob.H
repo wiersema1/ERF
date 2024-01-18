@@ -50,14 +50,6 @@ public:
         amrex::Array4<amrex::Real      > const& p_hse,
         amrex::Array4<amrex::Real const> const& z_nd,
         amrex::Array4<amrex::Real const> const& z_cc,
-#if defined(ERF_USE_MOISTURE)
-        amrex::Array4<amrex::Real      > const& qv,
-        amrex::Array4<amrex::Real      > const& qc,
-        amrex::Array4<amrex::Real      > const& qi,
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-        amrex::Array4<amrex::Real      > const& qv,
-        amrex::Array4<amrex::Real      > const& qc,
-#endif
         amrex::GeometryData const& geomdata,
         amrex::Array4<amrex::Real const> const& mf_m,
         amrex::Array4<amrex::Real const> const& mf_u,
@@ -68,11 +60,6 @@ public:
     void erf_init_dens_hse_moist (amrex::MultiFab& rho_hse,
                                   std::unique_ptr<amrex::MultiFab>& z_phys_nd,
                                   amrex::Geometry const& geom) override;
-
-    void init_custom_terrain (
-        const amrex::Geometry& geom,
-        amrex::MultiFab& z_phys_nd,
-        const amrex::Real& time) override;
 
     void erf_init_rayleigh (
         amrex::Vector<amrex::Real>& tau,

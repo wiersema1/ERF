@@ -1,4 +1,5 @@
 #include "prob.H"
+#include <ERF_Constants.H>
 
 using namespace amrex;
 
@@ -57,7 +58,7 @@ Real compute_relative_humidity (const Real z, const Real height, const Real z_tr
 {
     Real p_s = compute_saturation_pressure(T_b);
 
-    Real q_s = 0.622*p_s/(p_b - p_s);
+    Real q_s = Rd_on_Rv*p_s/(p_b - p_s);
 
     if(z <= height){
         return 0.014/q_s;
@@ -82,7 +83,7 @@ Real vapor_mixing_ratio (const Real z, const Real height, const Real p_b, const 
     Real p_s = compute_saturation_pressure(T_b);
     Real p_v = compute_vapor_pressure(p_s, RH);
 
-    Real q_v = 0.622*p_v/(p_b - p_v);
+    Real q_v = Rd_on_Rv*p_v/(p_b - p_v);
 
     if(z < height){
         return 0.014;
@@ -282,23 +283,17 @@ Problem::init_custom_pert (
     Array4<Real      > const& /*p_hse*/,
     Array4<Real const> const& /*z_nd*/,
     Array4<Real const> const& /*z_cc*/,
-#if defined(ERF_USE_MOISTURE)
-    Array4<Real      > const& qv,
-    Array4<Real      > const& qc,
-    Array4<Real      > const& qi,
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-    Array4<Real      > const&   ,
-    Array4<Real      > const&   ,
-#endif
     GeometryData const& geomdata,
     Array4<Real const> const& /*mf_m*/,
     Array4<Real const> const& /*mf_u*/,
     Array4<Real const> const& /*mf_v*/,
     const SolverChoice& sc)
 {
-  const int khi = geomdata.Domain().bigEnd()[2];
+    const bool use_moisture = (sc.moisture_type != MoistureType::None);
 
-  AMREX_ALWAYS_ASSERT(bx.length()[2] == khi+1);
+    const int khi = geomdata.Domain().bigEnd()[2];
+
+    AMREX_ALWAYS_ASSERT(bx.length()[2] == khi+1);
 
   // This is what we do at k = 0 -- note we assume p = p_0 and T = T_0 at z=0
   const amrex::Real& dz        = geomdata.CellSize()[2];
@@ -380,16 +375,10 @@ Problem::init_custom_pert (
     state(i, j, k, RhoScalar_comp) = rho*scalar;
 
     // mean states
-#if defined(ERF_USE_MOISTURE)
-    state(i, j, k, RhoQt_comp) = rho*q_v_hot;
-    state(i, j, k, RhoQp_comp) = 0.0;
-    qv(i, j, k) = q_v_hot;
-    qc(i, j, k) = 0.0;
-    qi(i, j, k) = 0.0;
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-    state(i, j, k, RhoQv_comp) = 0.0;//rho*qvapor;
-    state(i, j, k, RhoQc_comp) = 0.0;
-#endif
+    if (use_moisture) {
+        state(i, j, k, RhoQ1_comp) = rho*q_v_hot;
+        state(i, j, k, RhoQ2_comp) = 0.0;
+    }
 
   });
 
@@ -410,33 +399,6 @@ Problem::init_custom_pert (
   });
 
   amrex::Gpu::streamSynchronize();
-}
-
-void
-Problem::init_custom_terrain (const Geometry& /*geom*/,
-                              MultiFab& z_phys_nd,
-                              const Real& /*time*/)
-{
-    // Number of ghost cells
-    int ngrow = z_phys_nd.nGrow();
-
-    // Bottom of domain
-    int k0 = 0;
-
-    for ( MFIter mfi(z_phys_nd, TilingIfNotGPU()); mfi.isValid(); ++mfi )
-    {
-        // Grown box with no z range
-        amrex::Box xybx = mfi.growntilebox(ngrow);
-        xybx.setRange(2,0);
-
-        Array4<Real> const& z_arr = z_phys_nd.array(mfi);
-
-        ParallelFor(xybx, [=] AMREX_GPU_DEVICE (int i, int j, int) {
-
-            // Flat terrain with z = 0 at k = 0
-            z_arr(i,j,k0) = 0.0;
-        });
-    }
 }
 
 void

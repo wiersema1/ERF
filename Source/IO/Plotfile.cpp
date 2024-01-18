@@ -43,7 +43,11 @@ ERF::setPlotVariables (const std::string& pp_plot_var_names, Vector<std::string>
     // Get state variables in the same order as we define them,
     // since they may be in any order in the input list
     Vector<std::string> tmp_plot_names;
-    for (int i = 0; i < Cons::NumVars; ++i) {
+
+    int n_qstate   = micro.Get_Qstate_Size();
+    int ncomp_cons = NVAR_max - (NMOIST_max - n_qstate);
+
+    for (int i = 0; i < ncomp_cons; ++i) {
         if ( containerHasElement(plot_var_names, cons_names[i]) ) {
             tmp_plot_names.push_back(cons_names[i]);
         }
@@ -59,17 +63,20 @@ ERF::setPlotVariables (const std::string& pp_plot_var_names, Vector<std::string>
     }
     for (int i = 0; i < derived_names.size(); ++i) {
         if ( containerHasElement(plot_var_names, derived_names[i]) ) {
-#ifdef ERF_USE_PARTICLES
-            if ( (solverChoice.use_terrain || (derived_names[i] != "z_phys" && derived_names[i] != "detJ") ) &&
-                 (particleData.use_tracer_particles || (derived_names[i] != "tracer_particle_count")       ) &&
-                 (particleData.use_hydro_particles  || (derived_names[i] != "hydro_particle_count")        ) ) {
-#else
             if (solverChoice.use_terrain || (derived_names[i] != "z_phys" && derived_names[i] != "detJ") ) {
-#endif
                tmp_plot_names.push_back(derived_names[i]);
             }
         }
     }
+#ifdef ERF_USE_PARTICLES
+    const auto& particles_namelist( particleData.getNamesUnalloc() );
+    for (auto it = particles_namelist.cbegin(); it != particles_namelist.cend(); ++it) {
+        std::string tmp( (*it)+"_count" );
+        if (containerHasElement(plot_var_names, tmp) ) {
+            tmp_plot_names.push_back(tmp);
+        }
+    }
+#endif
 
     // Check to see if we found all the requested variables
     for (const auto& plot_name : plot_var_names) {
@@ -101,8 +108,9 @@ ERF::WritePlotFile (int which, Vector<std::string> plot_var_names)
     const Vector<std::string> varnames = PlotFileVarNames(plot_var_names);
     const int ncomp_mf = varnames.size();
 
-    if (ncomp_mf == 0)
-        return;
+    int ncomp_cons = vars_new[0][Vars::cons].nComp();
+
+    if (ncomp_mf == 0) return;
 
     // We Fillpatch here because some of the derived quantities require derivatives
     //     which require ghost cells to be filled.  We do not need to call FillPatcher
@@ -112,6 +120,14 @@ ERF::WritePlotFile (int which, Vector<std::string> plot_var_names)
         FillPatch(lev, t_new[lev], {&vars_new[lev][Vars::cons], &vars_new[lev][Vars::xvel],
                                     &vars_new[lev][Vars::yvel], &vars_new[lev][Vars::zvel]},
                                     fillset);
+    }
+
+    // Get qmoist pointers if using moisture
+    bool use_moisture = (solverChoice.moisture_type != MoistureType::None);
+    for (int lev = 0; lev <= finest_level; ++lev) {
+        for (int mvar(0); mvar<qmoist[lev].size(); ++mvar) {
+            qmoist[lev][mvar] = micro.Get_Qmoist_Ptr(lev,mvar);
+        }
     }
 
     Vector<MultiFab> mf(finest_level+1);
@@ -128,12 +144,13 @@ ERF::WritePlotFile (int which, Vector<std::string> plot_var_names)
         }
     }
 
-    for (int lev = 0; lev <= finest_level; ++lev) {
+    for (int lev = 0; lev <= finest_level; ++lev)
+    {
         int mf_comp = 0;
 
         // First, copy any of the conserved state variables into the output plotfile
-        AMREX_ALWAYS_ASSERT(cons_names.size() == Cons::NumVars);
-        for (int i = 0; i < Cons::NumVars; ++i) {
+        AMREX_ALWAYS_ASSERT(cons_names.size() >= ncomp_cons);
+        for (int i = 0; i < ncomp_cons; ++i) {
             if (containerHasElement(plot_var_names, cons_names[i])) {
                 MultiFab::Copy(mf[lev],vars_new[lev][Vars::cons],i,mf_comp,1,0);
                 mf_comp++;
@@ -173,7 +190,6 @@ ERF::WritePlotFile (int which, Vector<std::string> plot_var_names)
         };
 
         // Note: All derived variables must be computed in order of "derived_names" defined in ERF.H
-        calculate_derived("pressure",    derived::erf_derpres);
         calculate_derived("soundspeed",  derived::erf_dersoundspeed);
         calculate_derived("temp",        derived::erf_dertemp);
         calculate_derived("theta",       derived::erf_dertheta);
@@ -195,6 +211,27 @@ ERF::WritePlotFile (int which, Vector<std::string> plot_var_names)
             MultiFab::Copy(mf[lev],r_hse,0,mf_comp,1,0);
             mf_comp += 1;
         }
+
+        if (containerHasElement(plot_var_names, "pressure"))
+        {
+#ifdef _OPENMP
+#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
+#endif
+            for ( MFIter mfi(mf[lev],TilingIfNotGPU()); mfi.isValid(); ++mfi)
+            {
+                const Box& bx = mfi.tilebox();
+                const Array4<Real      >& derdat = mf[lev].array(mfi);
+                const Array4<Real const>&  S_arr = vars_new[lev][Vars::cons].const_array(mfi);
+
+                ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
+                {
+                    Real qv_for_p = (use_moisture) ? S_arr(i,j,k,RhoQ1_comp)/S_arr(i,j,k,Rho_comp) : 0;
+                    const Real rhotheta = S_arr(i,j,k,RhoTheta_comp);
+                    derdat(i, j, k, mf_comp) = getPgivenRTh(rhotheta,qv_for_p);
+                });
+            }
+            mf_comp += 1;
+        }
         if (containerHasElement(plot_var_names, "pert_pres"))
         {
 #ifdef _OPENMP
@@ -206,19 +243,10 @@ ERF::WritePlotFile (int which, Vector<std::string> plot_var_names)
                 const Array4<Real>& derdat = mf[lev].array(mfi);
                 const Array4<Real const>& p0_arr = p_hse.const_array(mfi);
                 const Array4<Real const>& S_arr = vars_new[lev][Vars::cons].const_array(mfi);
-#if defined(ERF_USE_MOISTURE)
-                const Array4<Real const> & qv_arr  = qmoist[0].const_array(mfi);
-#endif
 
                 ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
                 {
-#if defined(ERF_USE_MOISTURE)
-                    Real qv_for_p = qv_arr(i,j,k);
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-                    Real qv_for_p = S_arr(i,j,k,RhoQv_comp) / S_arr(i,j,k,Rho_comp);
-#else
-                    Real qv_for_p = 0.;
-#endif
+                    Real qv_for_p = (use_moisture) ? S_arr(i,j,k,RhoQ1_comp)/S_arr(i,j,k,Rho_comp) : 0;
                     const Real rhotheta = S_arr(i,j,k,RhoTheta_comp);
                     derdat(i, j, k, mf_comp) = getPgivenRTh(rhotheta,qv_for_p) - p0_arr(i,j,k);
                 });
@@ -243,6 +271,30 @@ ERF::WritePlotFile (int which, Vector<std::string> plot_var_names)
             mf_comp ++;
         }
 
+        if (containerHasElement(plot_var_names, "eq_pot_temp"))
+        {
+#ifdef _OPENMP
+#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
+#endif
+            for ( MFIter mfi(mf[lev],TilingIfNotGPU()); mfi.isValid(); ++mfi)
+            {
+                const Box& bx = mfi.tilebox();
+                const Array4<Real>& derdat  = mf[lev].array(mfi);
+                const Array4<Real const>& S_arr = vars_new[lev][Vars::cons].const_array(mfi);
+                ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+                    Real qv = (use_moisture) ? S_arr(i,j,k,RhoQ1_comp)/S_arr(i,j,k,Rho_comp) : 0.0;
+                    Real qc = (use_moisture) ? S_arr(i,j,k,RhoQ2_comp)/S_arr(i,j,k,Rho_comp) : 0.0;
+                    Real T = getTgivenRandRTh(S_arr(i,j,k,Rho_comp), S_arr(i,j,k,RhoTheta_comp), qv);
+                    Real pressure = getPgivenRTh(S_arr(i,j,k,RhoTheta_comp), qv);
+                    Real fac = Cp_d + Cp_l*(qv + qc);
+                    Real pv = erf_esatw(T)*100.0;
+
+                    derdat(i, j, k, mf_comp) = T*std::pow((pressure - pv)/p_0, -R_d/fac)*std::exp(L_v*qv/(fac*T)) ;
+                });
+            }
+            mf_comp ++;
+        }
+
         int klo = geom[lev].Domain().smallEnd(2);
         int khi = geom[lev].Domain().bigEnd(2);
 
@@ -259,7 +311,7 @@ ERF::WritePlotFile (int which, Vector<std::string> plot_var_names)
                 const Box& gbx = mfi.growntilebox(1);
                 const Array4<Real> & p_arr  = pres.array(mfi);
                 const Array4<Real const>& S_arr = vars_new[lev][Vars::cons].const_array(mfi);
-                amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                     p_arr(i,j,k) = getPgivenRTh(S_arr(i,j,k,RhoTheta_comp));
                 });
             }
@@ -346,7 +398,7 @@ ERF::WritePlotFile (int which, Vector<std::string> plot_var_names)
                 const Box& gbx = mfi.growntilebox(1);
                 const Array4<Real> & p_arr  = pres.array(mfi);
                 const Array4<Real const>& S_arr = vars_new[lev][Vars::cons].const_array(mfi);
-                amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                     p_arr(i,j,k) = getPgivenRTh(S_arr(i,j,k,RhoTheta_comp));
                 });
             }
@@ -579,74 +631,82 @@ ERF::WritePlotFile (int which, Vector<std::string> plot_var_names)
             MultiFab::Copy(mf[lev],*eddyDiffs_lev[lev],EddyDiff::Theta_h,mf_comp,1,0);
             mf_comp ++;
         }
-
-#if defined(ERF_USE_MOISTURE)
-        calculate_derived("qt",          derived::erf_derQt);
-        calculate_derived("qp",          derived::erf_derQp);
-
-        MultiFab qv_mf(qmoist[lev], make_alias, 0, 1);
-        MultiFab qc_mf(qmoist[lev], make_alias, 1, 1);
-        MultiFab qi_mf(qmoist[lev], make_alias, 2, 1);
-        MultiFab qr_mf(qmoist[lev], make_alias, 3, 1);
-        MultiFab qs_mf(qmoist[lev], make_alias, 4, 1);
-        MultiFab qg_mf(qmoist[lev], make_alias, 5, 1);
-
-        if (containerHasElement(plot_var_names, "qv"))
-        {
-            MultiFab::Copy(mf[lev],qv_mf,0,mf_comp,1,0);
-            mf_comp += 1;
+        if (containerHasElement(plot_var_names, "Lpbl")) {
+            MultiFab::Copy(mf[lev],*eddyDiffs_lev[lev],EddyDiff::PBL_lengthscale,mf_comp,1,0);
+            mf_comp ++;
         }
 
-        if (containerHasElement(plot_var_names, "qc"))
-        {
-            MultiFab::Copy(mf[lev],qc_mf,0,mf_comp,1,0);
-            mf_comp += 1;
-        }
+        // NOTE: Protect against accessing non-existent data
+        if (use_moisture) {
+            int q_size = qmoist[lev].size();
 
-        if (containerHasElement(plot_var_names, "qi"))
-        {
-            MultiFab::Copy(mf[lev],qi_mf,0,mf_comp,1,0);
-            mf_comp += 1;
-        }
+            if (containerHasElement(plot_var_names, "qt") && (q_size >= 1))
+            {
+                MultiFab qt_mf(*(qmoist[lev][0]), make_alias, 0, 1);
+                MultiFab::Copy(mf[lev],qt_mf,0,mf_comp,1,0);
+                mf_comp += 1;
+            }
 
-        if (containerHasElement(plot_var_names, "qrain"))
-        {
-            MultiFab::Copy(mf[lev],qr_mf,0,mf_comp,1,0);
-            mf_comp += 1;
-        }
+            if (containerHasElement(plot_var_names, "qv") && (q_size >= 2))
+            {
+                MultiFab qv_mf(*(qmoist[lev][1]), make_alias, 0, 1);
+                MultiFab::Copy(mf[lev],qv_mf,0,mf_comp,1,0);
+                mf_comp += 1;
+            }
 
-        if (containerHasElement(plot_var_names, "qsnow"))
-        {
-            MultiFab::Copy(mf[lev],qs_mf,0,mf_comp,1,0);
-            mf_comp += 1;
-        }
+            if (containerHasElement(plot_var_names, "qc") && (q_size >= 3))
+            {
+                MultiFab qc_mf(*(qmoist[lev][2]), make_alias, 0, 1);
+                MultiFab::Copy(mf[lev],qc_mf,0,mf_comp,1,0);
+                mf_comp += 1;
+            }
 
-        if (containerHasElement(plot_var_names, "qgraup"))
-        {
-            MultiFab::Copy(mf[lev],qg_mf,0,mf_comp,1,0);
-            mf_comp += 1;
+            if (containerHasElement(plot_var_names, "qi") && (q_size >= 4))
+            {
+                MultiFab qi_mf(*(qmoist[lev][3]), make_alias, 0, 1);
+                MultiFab::Copy(mf[lev],qi_mf,0,mf_comp,1,0);
+                mf_comp += 1;
+            }
+
+            if (containerHasElement(plot_var_names, "qp") && (q_size >= 5))
+            {
+                MultiFab qp_mf(*(qmoist[lev][4]), make_alias, 0, 1);
+                MultiFab::Copy(mf[lev],qp_mf,0,mf_comp,1,0);
+                mf_comp += 1;
+            }
+
+            if (containerHasElement(plot_var_names, "qrain") && (q_size >= 6))
+            {
+                MultiFab qr_mf(*(qmoist[lev][5]), make_alias, 0, 1);
+                MultiFab::Copy(mf[lev],qr_mf,0,mf_comp,1,0);
+                mf_comp += 1;
+            }
+
+            if (containerHasElement(plot_var_names, "qsnow") && (q_size >= 7))
+            {
+                MultiFab qs_mf(*(qmoist[lev][6]), make_alias, 0, 1);
+                MultiFab::Copy(mf[lev],qs_mf,0,mf_comp,1,0);
+                mf_comp += 1;
+            }
+
+            if (containerHasElement(plot_var_names, "qgraup") && (q_size >= 8))
+            {
+                MultiFab qg_mf(*(qmoist[lev][7]), make_alias, 0, 1);
+                MultiFab::Copy(mf[lev],qg_mf,0,mf_comp,1,0);
+                mf_comp += 1;
+            }
         }
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-        calculate_derived("qv",          derived::erf_derQv);
-        calculate_derived("qc",          derived::erf_derQc);
-#endif
 
 #ifdef ERF_USE_PARTICLES
-        if (containerHasElement(plot_var_names, "tracer_particle_count"))
-        {
-            MultiFab temp_dat(mf[lev].boxArray(), mf[lev].DistributionMap(), 1, 0);
-            temp_dat.setVal(0);
-            particleData.tracer_particles->Increment(temp_dat, lev);
-            MultiFab::Copy(mf[lev], temp_dat, 0, mf_comp, 1, 0);
-            mf_comp += 1;
-        }
-        if (containerHasElement(plot_var_names, "hydro_particle_count"))
-        {
-            MultiFab temp_dat(mf[lev].boxArray(), mf[lev].DistributionMap(), 1, 0);
-            temp_dat.setVal(0);
-            particleData.hydro_particles->Increment(temp_dat, lev);
-            MultiFab::Copy(mf[lev], temp_dat, 0, mf_comp, 1, 0);
-            mf_comp += 1;
+        const auto& particles_namelist( particleData.getNames() );
+        for (ParticlesNamesVector::size_type i = 0; i < particles_namelist.size(); i++) {
+            if (containerHasElement(plot_var_names, std::string(particles_namelist[i]+"_count"))) {
+                MultiFab temp_dat(mf[lev].boxArray(), mf[lev].DistributionMap(), 1, 0);
+                temp_dat.setVal(0);
+                particleData[particles_namelist[i]]->Increment(temp_dat, lev);
+                MultiFab::Copy(mf[lev], temp_dat, 0, mf_comp, 1, 0);
+                mf_comp += 1;
+            }
         }
 #endif
 

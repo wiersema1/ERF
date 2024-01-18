@@ -79,6 +79,7 @@ void erf_fast_rhs_MT (int step, int nrk,
                       std::unique_ptr<MultiFab>& mapfac_v,
                       YAFluxRegister* fr_as_crse,
                       YAFluxRegister* fr_as_fine,
+                      bool l_use_moisture,
                       bool l_reflux)
 {
     BL_PROFILE_REGION("erf_fast_rhs_MT()");
@@ -190,7 +191,7 @@ void erf_fast_rhs_MT (int step, int nrk,
         {
         BL_PROFILE("fast_rhs_copies_0");
         if (step == 0) {
-            amrex::ParallelFor(gbx,
+            ParallelFor(gbx,
             [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                 cur_cons(i,j,k,Rho_comp)      = prev_cons(i,j,k,Rho_comp);
                 cur_cons(i,j,k,RhoTheta_comp) = prev_cons(i,j,k,RhoTheta_comp);
@@ -203,7 +204,7 @@ void erf_fast_rhs_MT (int step, int nrk,
             });
         } else if (use_lagged_delta_rt) {
             // This is the default for cases with no or static terrain
-            amrex::ParallelFor(gbx,
+            ParallelFor(gbx,
             [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                 Real delta_rt = cur_cons(i,j,k,RhoTheta_comp) - stg_cons(i,j,k,RhoTheta_comp);
                 theta_extrap(i,j,k) = delta_rt + beta_d * (delta_rt - lagged_delta_rt(i,j,k,RhoTheta_comp));
@@ -213,7 +214,7 @@ void erf_fast_rhs_MT (int step, int nrk,
             });
         } else {
             // For the moving wave problem, this choice seems more robust
-            amrex::ParallelFor(gbx,
+            ParallelFor(gbx,
             [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
                 theta_extrap(i,j,k) = cur_cons(i,j,k,RhoTheta_comp) - stg_cons(i,j,k,RhoTheta_comp);
             });
@@ -243,7 +244,7 @@ void erf_fast_rhs_MT (int step, int nrk,
         // *********************************************************************
         {
         BL_PROFILE("fast_rhs_xymom_T");
-        amrex::ParallelFor(tbx, tby,
+        ParallelFor(tbx, tby,
         [=] AMREX_GPU_DEVICE (int i, int j, int k)
         {
                 // Add (negative) gradient of (rho theta) multiplied by lagged "pi"
@@ -258,15 +259,12 @@ void erf_fast_rhs_MT (int step, int nrk,
                 Real gpx = h_zeta_old * gp_xi - h_xi_old * gp_zeta_on_iface;
                 gpx *= mf_u(i,j,0);
 
-#if defined(ERF_USE_MOISTURE)
-                Real q = 0.5 * ( prim(i,j,k,PrimQt_comp) + prim(i-1,j,k,PrimQt_comp)
-                                +prim(i,j,k,PrimQp_comp) + prim(i-1,j,k,PrimQp_comp) );
-                gpx /= (1.0 + q);
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-                Real q = 0.5 * ( prim(i,j,k,PrimQv_comp) + prim(i-1,j,k,PrimQv_comp)
-                                +prim(i,j,k,PrimQc_comp) + prim(i-1,j,k,PrimQc_comp) );
-                gpx /= (1.0 + q);
-#endif
+                if (l_use_moisture) {
+                    Real q = 0.5 * ( prim(i,j,k,PrimQ1_comp) + prim(i-1,j,k,PrimQ1_comp)
+                                    +prim(i,j,k,PrimQ2_comp) + prim(i-1,j,k,PrimQ2_comp) );
+                    gpx /= (1.0 + q);
+                }
+
                 Real pi_c =  0.5 * (pi_stg_ca(i-1,j,k,0) + pi_stg_ca(i  ,j,k,0));
                 Real fast_rhs_rho_u = -Gamma * R_d * pi_c * gpx;
 
@@ -288,15 +286,12 @@ void erf_fast_rhs_MT (int step, int nrk,
                 Real gpy = h_zeta_old * gp_eta - h_eta_old  * gp_zeta_on_jface;
                 gpy *= mf_v(i,j,0);
 
-#if defined(ERF_USE_MOISTURE)
-                Real q = 0.5 * ( prim(i,j,k,PrimQt_comp) + prim(i,j-1,k,PrimQt_comp)
-                                +prim(i,j,k,PrimQp_comp) + prim(i,j-1,k,PrimQp_comp) );
-                gpy /= (1.0 + q);
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-                Real q = 0.5 * ( prim(i,j,k,PrimQv_comp) + prim(i,j-1,k,PrimQv_comp)
-                                +prim(i,j,k,PrimQc_comp) + prim(i,j-1,k,PrimQc_comp) );
-                gpy /= (1.0 + q);
-#endif
+                if (l_use_moisture) {
+                    Real q = 0.5 * ( prim(i,j,k,PrimQ1_comp) + prim(i,j-1,k,PrimQ1_comp)
+                                    +prim(i,j,k,PrimQ2_comp) + prim(i,j-1,k,PrimQ2_comp) );
+                    gpy /= (1.0 + q);
+                }
+
                 Real pi_c =  0.5 * (pi_stg_ca(i,j-1,k,0) + pi_stg_ca(i,j  ,k,0));
                 Real fast_rhs_rho_v = -Gamma * R_d * pi_c * gpy;
 
@@ -319,7 +314,7 @@ void erf_fast_rhs_MT (int step, int nrk,
         // *********************************************************************
         {
         BL_PROFILE("fast_T_making_rho_rhs");
-        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             Real h_zeta_stg_xlo = Compute_h_zeta_AtIface(i,  j  , k, dxInv, z_nd_stg);
             Real h_zeta_stg_xhi = Compute_h_zeta_AtIface(i+1,j  , k, dxInv, z_nd_stg);
@@ -348,15 +343,15 @@ void erf_fast_rhs_MT (int step, int nrk,
         {
         BL_PROFILE("fast_MT_making_omega");
         Box gbxo_lo = gbxo; gbxo_lo.setBig(2,0);
-        amrex::ParallelFor(gbxo_lo, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+        ParallelFor(gbxo_lo, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             omega_arr(i,j,k) = 0.;
         });
         Box gbxo_hi = gbxo; gbxo_hi.setSmall(2,gbxo.bigEnd(2));
-        amrex::ParallelFor(gbxo_hi, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+        ParallelFor(gbxo_hi, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             omega_arr(i,j,k) = prev_zmom(i,j,k) - stg_zmom(i,j,k) - zp_t_arr(i,j,k);
         });
         Box gbxo_mid = gbxo; gbxo_mid.setSmall(2,1); gbxo_mid.setBig(2,gbxo.bigEnd(2)-1);
-        amrex::ParallelFor(gbxo_mid, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+        ParallelFor(gbxo_mid, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             omega_arr(i,j,k) =
                (OmegaFromW(i,j,k,prev_zmom(i,j,k),prev_xmom,prev_ymom,z_nd_old,dxInv)
                -OmegaFromW(i,j,k, stg_zmom(i,j,k), stg_xmom, stg_ymom,z_nd_old,dxInv)) - zp_t_arr(i,j,k);
@@ -364,7 +359,7 @@ void erf_fast_rhs_MT (int step, int nrk,
         } // end profile
         // *********************************************************************
 
-        amrex::ParallelFor(tbx, tby,
+        ParallelFor(tbx, tby,
         [=] AMREX_GPU_DEVICE (int i, int j, int k)
         {
             Real h_zeta_new = Compute_h_zeta_AtIface(i, j, k, dxInv, z_nd_new);
@@ -401,17 +396,12 @@ void erf_fast_rhs_MT (int step, int nrk,
             Real coeff_P = coeffP_a(i,j,k);
             Real coeff_Q = coeffQ_a(i,j,k);
 
-#if defined(ERF_USE_MOISTURE)
-            Real q = 0.5 * ( prim(i,j,k,PrimQt_comp) + prim(i,j,k-1,PrimQt_comp)
-                            +prim(i,j,k,PrimQp_comp) + prim(i,j,k-1,PrimQp_comp) );
-            coeff_P /= (1.0 + q);
-            coeff_Q /= (1.0 + q);
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-            Real q = 0.5 * ( prim(i,j,k,PrimQv_comp) + prim(i,j,k-1,PrimQv_comp)
-                            +prim(i,j,k,PrimQc_comp) + prim(i,j,k-1,PrimQc_comp) );
-            coeff_P /= (1.0 + q);
-            coeff_Q /= (1.0 + q);
-#endif
+            if (l_use_moisture) {
+                Real q = 0.5 * ( prim(i,j,k,PrimQ1_comp) + prim(i,j,k-1,PrimQ1_comp)
+                                +prim(i,j,k,PrimQ2_comp) + prim(i,j,k-1,PrimQ2_comp) );
+                coeff_P /= (1.0 + q);
+                coeff_Q /= (1.0 + q);
+            }
 
             Real theta_t_lo  = 0.5 * ( prim(i,j,k-2,PrimTheta_comp) + prim(i,j,k-1,PrimTheta_comp) );
             Real theta_t_mid = 0.5 * ( prim(i,j,k-1,PrimTheta_comp) + prim(i,j,k  ,PrimTheta_comp) );
@@ -569,7 +559,7 @@ void erf_fast_rhs_MT (int step, int nrk,
         // **************************************************************************
         {
         BL_PROFILE("fast_rho_final_update");
-        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
               Real zflux_lo = beta_2 * soln_a(i,j,k  ) + beta_1 * omega_arr(i,j,k);
               Real zflux_hi = beta_2 * soln_a(i,j,k+1) + beta_1 * omega_arr(i,j,k+1);

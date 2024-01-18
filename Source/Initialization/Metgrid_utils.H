@@ -45,7 +45,8 @@ init_terrain_from_metgrid (amrex::FArrayBox& z_phys_nd_fab,
                            const amrex::Vector<amrex::FArrayBox>& NC_hgt_fab);
 
 void
-init_state_from_metgrid (const amrex::Real l_rdOcp,
+init_state_from_metgrid (const bool use_moisture,
+                         const amrex::Real l_rdOcp,
                          amrex::Box& tbxc,
                          amrex::Box& tbxu,
                          amrex::Box& tbxv,
@@ -80,7 +81,8 @@ init_msfs_from_metgrid (amrex::FArrayBox& msfu_fab,
                         const amrex::Vector<amrex::FArrayBox>& NC_MSFM_fab);
 
 void
-init_base_state_from_metgrid (const amrex::Real l_rdOcp,
+init_base_state_from_metgrid (const bool use_moisture,
+                              const amrex::Real l_rdOcp,
                               const amrex::Box& valid_bx,
                               const amrex::Vector<int>& flag_psfc,
                               amrex::FArrayBox& state,
@@ -101,9 +103,7 @@ calc_rho_p (const amrex::Real& rdOcp,
             const int& flag_psfc,
             const amrex::Real& psfc,
             amrex::Real* Theta_vec,
-#if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
             amrex::Real* Q_vec,
-#endif
             amrex::Real* z_vec,
             amrex::Real* Rhod_vec,
             amrex::Real* Rhom_vec,
@@ -122,11 +122,6 @@ calc_rho_p (const amrex::Real& rdOcp,
     }
 
     // calculate moist density at the surface.
-#if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
-    amrex::Real Q = Q_vec[0];
-#else
-    amrex::Real Q = 0.0;
-#endif
     Rhom_vec[0] = getRhogivenThetaPress(Theta_vec[0], Pm_vec[0], rdOcp, Q)*(1.0+Q);
 
     // integrate from the surface to the top boundary.
@@ -138,6 +133,8 @@ calc_rho_p (const amrex::Real& rdOcp,
             if (Pm_vec[k] < 0.0) Pm_vec[k] = 0.0;
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
             Q = Q_vec[k];
+#else
+            Q = 0.0
 #endif
             Rhom_vec[k] = getRhogivenThetaPress(Theta_vec[k], Pm_vec[k], rdOcp, Q)*(1.0+Q);
         } // it
@@ -147,6 +144,8 @@ calc_rho_p (const amrex::Real& rdOcp,
     Pd_vec[kmax] = Pm_vec[kmax];
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
     Q = Q_vec[kmax];
+#else
+    Q = 0.0
 #endif
     Rhod_vec[kmax] = getRhogivenThetaPress(Theta_vec[kmax], Pd_vec[kmax], rdOcp, Q_vec[kmax]);
     for (int k=kmax-1; k>=0; k--) {
@@ -157,6 +156,8 @@ calc_rho_p (const amrex::Real& rdOcp,
             if (Pd_vec[k] < 0.0) Pd_vec[k] = 0.0;
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
             Q = Q_vec[k];
+#else
+            Q = 0.0
 #endif
             Rhod_vec[k] = getRhogivenThetaPress(Theta_vec[k], Pd_vec[k], rdOcp, Q);
         } // it
@@ -195,7 +196,7 @@ interpolate_column_metgrid (const int& i,
     amrex::Real z0, z1;
     int klow   = -1;
     int khi0   = -1;
-    amrex::Real dzlow = 10000.0;
+    amrex::Real dzlow =  10000.0;
     amrex::Real dzhi0 = -10000.0;
     for (int kk = 0; kk < kmax_orig; kk++) {
         amrex::Real orig_z_stag = 0.0;

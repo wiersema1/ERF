@@ -58,6 +58,7 @@ void erf_fast_rhs_N (int step, int nrk,
                      std::unique_ptr<MultiFab>& mapfac_v,
                      YAFluxRegister* fr_as_crse,
                      YAFluxRegister* fr_as_fine,
+                     bool l_use_moisture,
                      bool l_reflux)
 {
     BL_PROFILE_REGION("erf_fast_rhs_N()");
@@ -127,8 +128,8 @@ void erf_fast_rhs_N (int step, int nrk,
         Box gbx = mfi.tilebox(); gbx.grow(1);
 
         if (step == 0) {
-            amrex::ParallelFor(gbx,
-            [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+            ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
                 cur_cons(i,j,k,Rho_comp)      = prev_cons(i,j,k,Rho_comp);
                 cur_cons(i,j,k,RhoTheta_comp) = prev_cons(i,j,k,RhoTheta_comp);
             });
@@ -136,13 +137,12 @@ void erf_fast_rhs_N (int step, int nrk,
 
         Box gtbz = mfi.nodaltilebox(2);
         gtbz.grow(IntVect(1,1,0));
-        amrex::ParallelFor(gtbz,
-        [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+        ParallelFor(gtbz, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             old_drho_w(i,j,k) = prev_zmom(i,j,k) - stage_zmom(i,j,k);
         });
 
         const Array4<Real>& theta_extrap = extrap.array(mfi);
-        amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+        ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             old_drho(i,j,k)       = cur_cons(i,j,k,Rho_comp)      - stage_cons(i,j,k,Rho_comp);
             old_drho_theta(i,j,k) = cur_cons(i,j,k,RhoTheta_comp) - stage_cons(i,j,k,RhoTheta_comp);
 
@@ -166,7 +166,7 @@ void erf_fast_rhs_N (int step, int nrk,
         const Array4<Real>& lagged_delta_rt = S_scratch[IntVar::cons].array(mfi);
         const Array4<Real>& old_drho_theta  = Delta_rho_theta.array(mfi);
 
-        amrex::ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+        ParallelFor(gbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             lagged_delta_rt(i,j,k,RhoTheta_comp) = old_drho_theta(i,j,k);
         });
     } // mfi
@@ -185,9 +185,7 @@ void erf_fast_rhs_N (int step, int nrk,
 
         const Array4<const Real> & stage_xmom = S_stage_data[IntVar::xmom].const_array(mfi);
         const Array4<const Real> & stage_ymom = S_stage_data[IntVar::ymom].const_array(mfi);
-#if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
         const Array4<const Real> & prim       = S_stage_prim.const_array(mfi);
-#endif
 
         const Array4<const Real>& slow_rhs_rho_u = S_slow_rhs[IntVar::xmom].const_array(mfi);
         const Array4<const Real>& slow_rhs_rho_v = S_slow_rhs[IntVar::ymom].const_array(mfi);
@@ -215,22 +213,19 @@ void erf_fast_rhs_N (int step, int nrk,
         // *********************************************************************
         {
         BL_PROFILE("fast_rhs_xymom");
-        amrex::ParallelFor(tbx, tby,
+        ParallelFor(tbx, tby,
         [=] AMREX_GPU_DEVICE (int i, int j, int k)
         {
             // Add (negative) gradient of (rho theta) multiplied by lagged "pi"
             Real gpx = (theta_extrap(i,j,k) - theta_extrap(i-1,j,k))*dxi;
             gpx *= mf_u(i,j,0);
 
-#if defined(ERF_USE_MOISTURE)
-            Real q = 0.5 * ( prim(i,j,k,PrimQt_comp) + prim(i-1,j,k,PrimQt_comp)
-                            +prim(i,j,k,PrimQp_comp) + prim(i-1,j,k,PrimQp_comp) );
-            gpx /= (1.0 + q);
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-            Real q = 0.5 * ( prim(i,j,k,PrimQv_comp) + prim(i-1,j,k,PrimQv_comp)
-                            +prim(i,j,k,PrimQc_comp) + prim(i-1,j,k,PrimQc_comp) );
-            gpx /= (1.0 + q);
-#endif
+            if (l_use_moisture) {
+                Real q = 0.5 * ( prim(i,j,k,PrimQ1_comp) + prim(i-1,j,k,PrimQ1_comp)
+                                +prim(i,j,k,PrimQ2_comp) + prim(i-1,j,k,PrimQ2_comp) );
+                gpx /= (1.0 + q);
+            }
+
             Real pi_c =  0.5 * (pi_stage_ca(i-1,j,k,0) + pi_stage_ca(i,j,k,0));
 
             Real fast_rhs_rho_u = -Gamma * R_d * pi_c * gpx;
@@ -248,15 +243,12 @@ void erf_fast_rhs_N (int step, int nrk,
             Real gpy = (theta_extrap(i,j,k) - theta_extrap(i,j-1,k))*dyi;
             gpy *= mf_v(i,j,0);
 
-#if defined(ERF_USE_MOISTURE)
-            Real q = 0.5 * ( prim(i,j,k,PrimQt_comp) + prim(i,j-1,k,PrimQt_comp)
-                            +prim(i,j,k,PrimQp_comp) + prim(i,j-1,k,PrimQp_comp) );
-            gpy /= (1.0 + q);
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-            Real q = 0.5 * ( prim(i,j,k,PrimQv_comp) + prim(i,j-1,k,PrimQv_comp)
-                            +prim(i,j,k,PrimQc_comp) + prim(i,j-1,k,PrimQc_comp) );
-            gpy /= (1.0 + q);
-#endif
+            if (l_use_moisture) {
+                Real q = 0.5 * ( prim(i,j,k,PrimQ1_comp) + prim(i,j-1,k,PrimQ1_comp)
+                                +prim(i,j,k,PrimQ2_comp) + prim(i,j-1,k,PrimQ2_comp) );
+                gpy /= (1.0 + q);
+            }
+
             Real pi_c =  0.5 * (pi_stage_ca(i,j-1,k,0) + pi_stage_ca(i,j,k,0));
 
             Real fast_rhs_rho_v = -Gamma * R_d * pi_c * gpy;
@@ -341,8 +333,7 @@ void erf_fast_rhs_N (int step, int nrk,
         // *********************************************************************
         {
         BL_PROFILE("making_rho_rhs");
-        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-        {
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
             Real xflux_lo = (temp_cur_xmom_arr(i  ,j,k) - stage_xmom(i  ,j,k)) / mf_u(i  ,j,0);;
             Real xflux_hi = (temp_cur_xmom_arr(i+1,j,k) - stage_xmom(i+1,j,k)) / mf_u(i+1,j,0);;
             Real yflux_lo = (temp_cur_ymom_arr(i,j  ,k) - stage_ymom(i,j  ,k)) / mf_v(i,j  ,0);;
@@ -382,17 +373,12 @@ void erf_fast_rhs_N (int step, int nrk,
              Real coeff_P = coeffP_a(i,j,k);
              Real coeff_Q = coeffQ_a(i,j,k);
 
-#if defined(ERF_USE_MOISTURE)
-            Real q = 0.5 * ( prim(i,j,k,PrimQt_comp) + prim(i,j,k-1,PrimQt_comp)
-                            +prim(i,j,k,PrimQp_comp) + prim(i,j,k-1,PrimQp_comp) );
-            coeff_P /= (1.0 + q);
-            coeff_Q /= (1.0 + q);
-#elif defined(ERF_USE_WARM_NO_PRECIP)
-            Real q = 0.5 * ( prim(i,j,k,PrimQv_comp) + prim(i,j,k-1,PrimQv_comp)
-                            +prim(i,j,k,PrimQc_comp) + prim(i,j,k-1,PrimQc_comp) );
-            coeff_P /= (1.0 + q);
-            coeff_Q /= (1.0 + q);
-#endif
+            if (l_use_moisture) {
+                Real q = 0.5 * ( prim(i,j,k,PrimQ1_comp) + prim(i,j,k-1,PrimQ1_comp)
+                                +prim(i,j,k,PrimQ2_comp) + prim(i,j,k-1,PrimQ2_comp) );
+                coeff_P /= (1.0 + q);
+                coeff_Q /= (1.0 + q);
+            }
 
             Real theta_t_lo  = 0.5 * ( prim(i,j,k-2,PrimTheta_comp) + prim(i,j,k-1,PrimTheta_comp) );
             Real theta_t_mid = 0.5 * ( prim(i,j,k-1,PrimTheta_comp) + prim(i,j,k  ,PrimTheta_comp) );
@@ -500,7 +486,7 @@ void erf_fast_rhs_N (int step, int nrk,
         // **************************************************************************
         {
         BL_PROFILE("fast_rho_final_update");
-        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             Real zflux_lo = beta_2 * soln_a(i,j,k  ) + beta_1 * old_drho_w(i,j,k  );
             Real zflux_hi = beta_2 * soln_a(i,j,k+1) + beta_1 * old_drho_w(i,j,k+1);
@@ -548,7 +534,7 @@ void erf_fast_rhs_N (int step, int nrk,
         auto const& temp_rhs_arr     = temp_rhs.const_array(mfi);
         auto const& slow_rhs_cons    = S_slow_rhs[IntVar::cons].const_array(mfi);
 
-        amrex::ParallelFor(bx, cons_dycore, [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
+        ParallelFor(bx, cons_dycore, [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
         {
             cur_cons(i,j,k,n) += dtau * (slow_rhs_cons(i,j,k,n) - temp_rhs_arr(i,j,k,n));
         });
@@ -562,7 +548,7 @@ void erf_fast_rhs_N (int step, int nrk,
         Box tbx = surroundingNodes(bx,0);
         Box tby = surroundingNodes(bx,1);
 
-        amrex::ParallelFor(tbx, tby,
+        ParallelFor(tbx, tby,
         [=] AMREX_GPU_DEVICE (int i, int j, int k)
         {
             cur_xmom(i,j,k) = temp_cur_xmom_arr(i,j,k);

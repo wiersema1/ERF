@@ -28,6 +28,10 @@ enum struct TerrainType {
     Static, Moving
 };
 
+enum struct MoistureType {
+    Kessler, SAM, FastEddy, None
+};
+
 enum struct Coord {
     x, y, z
 };
@@ -56,17 +60,45 @@ struct SolverChoice {
                 use_terrain = true;
             }
             pp.query("zsurface", zsurf);
+            if (zsurf != 0.0) {
+                amrex::Print() << "Nominal zsurface height != 0, may result in unexpected behavior"
+                    << std::endl;
+            }
             pp.get("initial_dz", dz0);
         }
 
         // Do we set map scale factors to 0.5 instead of 1 for testing?
         pp.query("test_mapfactor", test_mapfactor);
 
+        // What type of moisture model to use
+        static std::string moisture_model_string = "None";
+        pp.query("moisture_model", moisture_model_string);
+        if (moisture_model_string == "SAM") {
+            moisture_type = MoistureType::SAM;
+        } else if (moisture_model_string == "Kessler") {
+            moisture_type = MoistureType::Kessler;
+        } else if (moisture_model_string == "FastEddy") {
+            moisture_type = MoistureType::FastEddy;
+        } else {
+            moisture_type = MoistureType::None;
+        }
+
         // Which expression (1,2 or 3) to use for buoyancy
         pp.query("buoyancy_type", buoyancy_type);
         if (buoyancy_type != 1 && buoyancy_type != 2 && buoyancy_type != 3 && buoyancy_type != 4) {
             amrex::Abort("buoyancy_type must be 1, 2, 3 or 4");
         }
+
+        /*
+        // Set a different default for moist vs dry
+        if (moisture_type != MoistureType::None) {
+            if (moisture_type == MoistureType::FastEddy) {
+                buoyancy_type = 1; // asserted in make buoyancy
+            } else {
+                buoyancy_type = 2; // uses Tprime
+            }
+        }
+        */
 
         // Is the terrain static or moving?
         static std::string terrain_type_string = "Static";
@@ -93,9 +125,6 @@ struct SolverChoice {
         pp.query("c_p", c_p);
         rdOcp = R_d / c_p;
 
-#if defined(ERF_USE_WARM_NO_PRECIP)
-        pp.query("tau_cond", tau_cond);
-#endif
 
 #if defined(ERF_USE_POISSON_SOLVE)
         // Should we project the initial velocity field to make it divergence-free?
@@ -159,11 +188,9 @@ struct SolverChoice {
 
         pp.query("Ave_Plane", ave_plane);
 
-#ifdef ERF_USE_MOISTURE
         pp.query("mp_clouds", do_cloud);
         pp.query("mp_precip", do_precip);
         pp.query("use_moist_background", use_moist_background);
-#endif
 
         // Use numerical diffusion?
         pp.query("use_NumDiff",use_NumDiff);
@@ -183,7 +210,7 @@ struct SolverChoice {
             turbChoice[lev].init_params(lev,max_level);
         }
 
-        // If running LES/PBL then must use "ConstantAlpha"
+        // If running LES/PBL then molecular diffusion must be "Constant" or "None"
         for (int lev = 0; lev <= max_level; lev++) {
             if (turbChoice[lev].les_type != LESType::None) {
                 if ( diffChoice.molec_diff_type == MolecDiffType::ConstantAlpha ) {
@@ -302,11 +329,7 @@ struct SolverChoice {
     bool        test_mapfactor         = false;
 
     bool        use_terrain            = false;
-#ifdef ERF_USE_MOISTURE
-    int         buoyancy_type          = 2; // uses Tprime
-#else
     int         buoyancy_type          = 1; // uses rhoprime directly
-#endif
 
     // Specify what additional physics/forcing modules we use
     bool        use_gravity            = false;
@@ -331,10 +354,6 @@ struct SolverChoice {
     amrex::Real zsurf                   = 0.0;
     amrex::Real dz0;
 
-#if defined(ERF_USE_WARM_NO_PRECIP)
-    amrex::Real tau_cond = 1.0; // Default time of 1 sec -- this is somewhat arbitray
-#endif
-
 #if defined(ERF_USE_POISSON_SOLVE)
     int project_initial_velocity = 1;
 #endif
@@ -350,17 +369,16 @@ struct SolverChoice {
 
     CouplingType coupling_type;
     TerrainType  terrain_type;
+    MoistureType moisture_type;
 
     ABLDriverType abl_driver_type;
     amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> abl_pressure_grad;
     amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> abl_geo_forcing;
 
     int ave_plane {2};
-#ifdef ERF_USE_MOISTURE
     // Microphysics params
     bool do_cloud {true};
     bool do_precip {true};
     bool use_moist_background {false};
-#endif
 };
 #endif

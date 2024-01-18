@@ -22,7 +22,7 @@ using namespace amrex;
  * @param[in] l_use_ndiff flag describing whether we will later add explicit numerical diffusion
  */
 
-void VelocityToMomentum( const MultiFab& xvel_in,
+void VelocityToMomentum (const MultiFab& xvel_in,
                          const IntVect& xvel_ngrow,
                          const MultiFab& yvel_in,
                          const IntVect& yvel_ngrow,
@@ -65,7 +65,7 @@ void VelocityToMomentum( const MultiFab& xvel_in,
         const Array4<Real const>& vely = yvel_in.array(mfi);
         const Array4<Real const>& velz = zvel_in.array(mfi);
 
-        amrex::ParallelFor(tbx, tby, tbz,
+        ParallelFor(tbx, tby, tbz,
         [=] AMREX_GPU_DEVICE (int i, int j, int k) {
             momx(i,j,k) = velx(i,j,k) * 0.5 * (dens_arr(i,j,k,Rho_comp) + dens_arr(i-1,j,k,Rho_comp));
         },
