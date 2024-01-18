@@ -104,6 +104,7 @@ ERF::fill_from_metgrid (const Vector<MultiFab*>& mfs,
                 } else {
                     amrex::Print() << "fill_from_metgrid UNKNOWN" << std::endl;
                 }
+                amrex::Print() << " n_time=" << n_time << " \toma=" << oma << " \talpha=" << alpha << std::endl;
 
                 // We have data at fixed time intervals we will call dT
                 // Then to interpolate, given time, we can define n = (time/dT)
@@ -127,9 +128,38 @@ ERF::fill_from_metgrid (const Vector<MultiFab*>& mfs,
                     Box gbx = mfi.growntilebox(ng_vect);
                     const Array4<Real>& dest_arr = mf.array(mfi);
                     Box bx_xlo, bx_xhi, bx_ylo, bx_yhi;
-                    compute_interior_ghost_bxs_xy(gbx, domain, width, set_width,
+                    compute_interior_ghost_bxs_xy(gbx, domain, width, 0,
                                                   bx_xlo, bx_xhi,
                                                   bx_ylo, bx_yhi, ng_vect);
+
+                    amrex::AllPrint() << "fill_from_metgrid bx_xlo=" << bx_xlo << std::endl;
+                    amrex::AllPrint() << "fill_from_metgrid bx_xhi=" << bx_xhi << std::endl;
+                    amrex::AllPrint() << "fill_from_metgrid bx_ylo=" << bx_ylo << std::endl;
+                    amrex::AllPrint() << "fill_from_metgrid bx_yhi=" << bx_yhi << std::endl;
+                    if (ivar == MetGridBdyVars::QV) {
+                        amrex::Print() << " QV BEFORE" << std::endl;
+                        int jj = (dom_hi.y - dom_lo.y)/2+dom_lo.y;
+                        for (int kk = 9; kk >= 0; kk--) {
+                            for (int ii = 0; ii < 10; ii++) {
+                                amrex::Print() << " " << dest_arr(ii,jj,kk,comp_idx);
+                            }
+                            amrex::Print() << std::endl;
+                        }
+                        amrex::Print() << " bdatxlo_n" << std::endl;
+                        for (int k = 9; k >= 0; k--) {
+                            for (int ii = std::max(dom_lo.x, amrex::lbound(bx_xlo).x); ii <= std::min(dom_hi.x, amrex::ubound(bx_xlo).x); ii++) {
+                                amrex::Print() << " " << bdatxlo_n(ii,jj,k,0);
+                            }
+                            amrex::Print() << std::endl;
+                        }
+                        amrex::Print() << " bdatxlo_np1" << std::endl;
+                        for (int k = 9; k >= 0; k--) {
+                            for (int ii = std::max(dom_lo.x, amrex::lbound(bx_xlo).x); ii <= std::min(dom_hi.x, amrex::ubound(bx_xlo).x); ii++) {
+                                amrex::Print() << " " << bdatxlo_np1(ii,jj,k,0);
+                            }
+                            amrex::Print() << std::endl;
+                        }
+                    }
 
                     // x-faces (includes exterior y ghost cells)
                     ParallelFor(bx_xlo, bx_xhi,
@@ -164,6 +194,17 @@ ERF::fill_from_metgrid (const Vector<MultiFab*>& mfs,
                         dest_arr(i,j,k,comp_idx) = oma   * bdatyhi_n  (i,jj,k,0)
                                                  + alpha * bdatyhi_np1(i,jj,k,0);
                     });
+
+                    if (ivar == MetGridBdyVars::QV) {
+                        amrex::Print() << " QV AFTER" << std::endl;
+                        int jj = (dom_hi.y - dom_lo.y)/2+dom_lo.y;
+                        for (int kk = 9; kk >= 0; kk--) {
+                            for (int ii = 0; ii < 10; ii++) {
+                                amrex::Print() << " " << dest_arr(ii,jj,kk,comp_idx);
+                            }
+                            amrex::Print() << std::endl;
+                        }
+                    }
                 } // mfi
 
             // Variable not read or computed from met_em files
@@ -182,7 +223,7 @@ ERF::fill_from_metgrid (const Vector<MultiFab*>& mfs,
                     Box bx_xlo, bx_xhi, bx_ylo, bx_yhi;
                     compute_interior_ghost_bxs_xy(gbx, domain, width, 0,
                                                   bx_xlo, bx_xhi,
-                                                  bx_ylo, bx_yhi, ng_vect);
+                                                  bx_ylo, bx_yhi, ng_vect, true);
 
                     // x-faces (includes y ghost cells)
                     ParallelFor(bx_xlo, bx_xhi,

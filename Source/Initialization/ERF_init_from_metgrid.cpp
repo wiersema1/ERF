@@ -368,6 +368,16 @@ ERF::init_from_metgrid (int lev)
         }
     }
 
+    for (int it(0); it < ntimes; it++) {
+        const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[it][MetGridBdyVars::QV].const_array();
+        amrex::Print() << " fabs_for_bcs[" << it << "][" << MetGridBdyVars::QV << "] after ParallelAllReduce::Sum" << std::endl;
+        for (int k=9; k >= 0; k--) {
+            for (int ii=0; ii <= 9; ii++) {
+                amrex::Print() << " " << fabs_for_bcs_arr(ii, 40, k);
+            }
+            amrex::Print() << std::endl;
+        }
+    }
 
     // Set up boxes for lateral boundary arrays.
     bdy_data_xlo.resize(ntimes);
@@ -434,26 +444,31 @@ ERF::init_from_metgrid (int lev)
     for (int ivar(MetGridBdyVars::U); ivar < MetGridBdyEnd; ivar++) {
         for (int it(0); it < ntimes; it++) {
             if (ivar == MetGridBdyVars::U) {
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tbdy_data_*[" << it << "] for U" << std::endl;
                 bdy_data_xlo[it].push_back(FArrayBox(xlo_plane_x_stag, 1));
                 bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_x_stag, 1));
                 bdy_data_ylo[it].push_back(FArrayBox(ylo_plane_x_stag, 1));
                 bdy_data_yhi[it].push_back(FArrayBox(yhi_plane_x_stag, 1));
             } else if (ivar == MetGridBdyVars::V) {
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tbdy_data_*[" << it << "] for V" << std::endl;
                 bdy_data_xlo[it].push_back(FArrayBox(xlo_plane_y_stag, 1));
                 bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_y_stag, 1));
                 bdy_data_ylo[it].push_back(FArrayBox(ylo_plane_y_stag, 1));
                 bdy_data_yhi[it].push_back(FArrayBox(yhi_plane_y_stag, 1));
             } else if (ivar == MetGridBdyVars::R) {
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tbdy_data_*[" << it << "] for R" << std::endl;
                 bdy_data_xlo[it].push_back(FArrayBox(xlo_plane_no_stag, 1));
                 bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_no_stag, 1));
                 bdy_data_ylo[it].push_back(FArrayBox(ylo_plane_no_stag, 1));
                 bdy_data_yhi[it].push_back(FArrayBox(yhi_plane_no_stag, 1));
             } else if (ivar == MetGridBdyVars::T) {
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tbdy_data_*[" << it << "] for T" << std::endl;
                 bdy_data_xlo[it].push_back(FArrayBox(xlo_plane_no_stag, 1));
                 bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_no_stag, 1));
                 bdy_data_ylo[it].push_back(FArrayBox(ylo_plane_no_stag, 1));
                 bdy_data_yhi[it].push_back(FArrayBox(yhi_plane_no_stag, 1));
             } else if (ivar == MetGridBdyVars::QV) {
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tbdy_data_*[" << it << "] for QV" << std::endl;
                 bdy_data_xlo[it].push_back(FArrayBox(xlo_plane_no_stag, 1));
                 bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_no_stag, 1));
                 bdy_data_ylo[it].push_back(FArrayBox(ylo_plane_no_stag, 1));
@@ -475,69 +490,78 @@ ERF::init_from_metgrid (int lev)
     amrex::Box xlo_plane, xhi_plane, ylo_plane, yhi_plane;
     for (int it(0); it < ntimes; it++) {
 
-//        const Array4<Real const>& R_bcs_arr = fabs_for_bcs[it][MetGridBdyVars::R].const_array();
-//        const Array4<Real const>& R_bcs_arr = fabs_for_bcs[0][MetGridBdyVars::R].const_array();
-
         for (int ivar(MetGridBdyVars::U); ivar < MetGridBdyEnd; ivar++) {
 
             auto xlo_arr = bdy_data_xlo[it][ivar].array();
             auto xhi_arr = bdy_data_xhi[it][ivar].array();
             auto ylo_arr = bdy_data_ylo[it][ivar].array();
             auto yhi_arr = bdy_data_yhi[it][ivar].array();
-//            const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[it][ivar].const_array();
+            const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[it][ivar].const_array();
 // ---------------------------------------------------------------------------------------
 // DJW: remove this after debugging is complete. This enforces steady boundary conditions.
-            const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[0][ivar].const_array();
+//            const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[0][ivar].const_array();
 // ---------------------------------------------------------------------------------------
 
             if (ivar == MetGridBdyVars::U) {
                 multiply_rho = false;
                 xlo_plane = xlo_plane_x_stag; xhi_plane = xhi_plane_x_stag;
                 ylo_plane = ylo_plane_x_stag; yhi_plane = yhi_plane_x_stag;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane " << xlo_plane << " \tfor U" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane " << xhi_plane << " \tfor U" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane " << ylo_plane << " \tfor U" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane " << yhi_plane << " \tfor U" << std::endl;
             } else if (ivar == MetGridBdyVars::V) {
                 multiply_rho = false;
                 xlo_plane = xlo_plane_y_stag; xhi_plane = xhi_plane_y_stag;
                 ylo_plane = ylo_plane_y_stag; yhi_plane = yhi_plane_y_stag;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane " << xlo_plane << " \tfor V" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane " << xhi_plane << " \tfor V" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane " << ylo_plane << " \tfor V" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane " << yhi_plane << " \tfor V" << std::endl;
             } else if (ivar == MetGridBdyVars::R) {
                 multiply_rho = false;
                 xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
                 ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane " << xlo_plane << " \tfor R" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane " << xhi_plane << " \tfor R" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane " << ylo_plane << " \tfor R" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane " << yhi_plane << " \tfor R" << std::endl;
             } else if (ivar == MetGridBdyVars::T) {
                 multiply_rho = false;
                 xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
                 ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane " << xlo_plane << " \tfor T" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane " << xhi_plane << " \tfor T" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane " << ylo_plane << " \tfor T" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane " << yhi_plane << " \tfor T" << std::endl;
             } else if (ivar == MetGridBdyVars::QV) {
                 multiply_rho = false;
                 xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
                 ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane " << xlo_plane << " \tfor QV" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane " << xhi_plane << " \tfor QV" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane " << ylo_plane << " \tfor QV" << std::endl;
+                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane " << yhi_plane << " \tfor QV" << std::endl;
             } // MetGridBdyVars::QV
 
             // west boundary
             amrex::ParallelFor(xlo_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
             {
-//                amrex::Real Factor = (multiply_rho) ? R_bcs_arr(i,j,k) : 1.0;
-//                xlo_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k)*Factor;
                 xlo_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k);
             });
             // xvel at east boundary
             amrex::ParallelFor(xhi_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
             {
-//                amrex::Real Factor = (multiply_rho) ? R_bcs_arr(i,j,k) : 1.0;
-//                xhi_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k)*Factor;
                 xhi_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k);
             });
             // xvel at south boundary
             amrex::ParallelFor(ylo_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
             {
-//                amrex::Real Factor = (multiply_rho) ? R_bcs_arr(i,j,k) : 1.0;
-//                ylo_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k)*Factor;
                 ylo_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k);
             });
             // xvel at north boundary
             amrex::ParallelFor(yhi_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
             {
-//                amrex::Real Factor = (multiply_rho) ? R_bcs_arr(i,j,k) : 1.0;
-//                yhi_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k)*Factor;
                 yhi_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k);
             });
 
@@ -667,6 +691,13 @@ init_state_from_metgrid (const Real l_rdOcp,
                 if (it==0) new_data(i,j,k,0) = Interp_Val;
             }
         });
+        amrex::Print() << " mask_u_arr" << std::endl;
+        for (int k=9; k >= 0; k--) {
+            for (int ii=0; ii >= 3; ii++) {
+                amrex::Print() << " " << mask_u_arr(ii,40,k);
+            }
+            amrex::Print() << std::endl;
+        }
         }
 
 
@@ -757,6 +788,7 @@ init_state_from_metgrid (const Real l_rdOcp,
 #elif defined(ERF_USE_WARM_NO_PRECIP)
         int state_indx = RhoQv_comp;
 #endif
+        amrex::Print() << " bx2d for QV in init_state_from_metgrid " << bx2d << std::endl;
         ParallelFor(bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
         {
             for (int k = 0; k<=kmax; k++) {
@@ -765,7 +797,16 @@ init_state_from_metgrid (const Real l_rdOcp,
               if (it==0) new_data(i,j,k,state_indx)   = Interp_Val;
             }
         });
+        amrex::Print() << " mask_c_arr for QV right" << std::endl;
+        amrex::Print() << mask_c_arr << std::endl;
+     //   for (int k=9; k >= 0; k--) {
+     //       for (int ii=0; ii >= 3; ii++) {
+     //           amrex::Print() << " " << mask_c_arr(ii,40,k);
+     //       }
+     //       amrex::Print() << std::endl;
+     //   }
         }
+
 #endif
 
         // ********************************************************
@@ -850,14 +891,14 @@ init_base_state_from_metgrid (const Real l_rdOcp,
     int kmax = amrex::ubound(valid_bx).z;
 
     // Device vectors for columnwise operations
-    Gpu::DeviceVector<Real>      z_vec_d(kmax+2,0); Real* z_vec      =      z_vec_d.data();
-    Gpu::DeviceVector<Real> Thetam_vec_d(kmax+1,0); Real* Thetam_vec = Thetam_vec_d.data();
-    Gpu::DeviceVector<Real>   Rhod_vec_d(kmax+1,0); Real* Rhod_vec   =   Rhod_vec_d.data();
-    Gpu::DeviceVector<Real>   Rhom_vec_d(kmax+1,0); Real* Rhom_vec   =   Rhom_vec_d.data();
-    Gpu::DeviceVector<Real>     Pd_vec_d(kmax+1,0); Real* Pd_vec     =     Pd_vec_d.data();
-    Gpu::DeviceVector<Real>     Pm_vec_d(kmax+1,0); Real* Pm_vec     =     Pm_vec_d.data();
+    Gpu::DeviceVector<Real>     z_vec_d(kmax+2,0); Real* z_vec     =     z_vec_d.data();
+    Gpu::DeviceVector<Real> Theta_vec_d(kmax+1,0); Real* Theta_vec = Theta_vec_d.data();
+    Gpu::DeviceVector<Real>  Rhod_vec_d(kmax+1,0); Real* Rhod_vec  =  Rhod_vec_d.data();
+    Gpu::DeviceVector<Real>  Rhom_vec_d(kmax+1,0); Real* Rhom_vec  =  Rhom_vec_d.data();
+    Gpu::DeviceVector<Real>    Pd_vec_d(kmax+1,0); Real* Pd_vec    =    Pd_vec_d.data();
+    Gpu::DeviceVector<Real>    Pm_vec_d(kmax+1,0); Real* Pm_vec    =    Pm_vec_d.data();
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
-    Gpu::DeviceVector<Real>      Q_vec_d(kmax+1,0); Real* Q_vec      =      Q_vec_d.data();
+    Gpu::DeviceVector<Real>     Q_vec_d(kmax+1,0); Real* Q_vec     =     Q_vec_d.data();
 #endif
 
     // Device vectors for psfc flags
@@ -883,26 +924,20 @@ init_base_state_from_metgrid (const Real l_rdOcp,
         amrex::ParallelFor(valid_bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
         {
             for (int k=0; k<=kmax; k++) {
-                     z_vec[k] = new_z(i,j,k);
-#if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
-                    Q_vec[k] = new_data(i,j,k,RhoQ_comp);
-                    amrex::Real qvf = 1.0+(R_v/R_d+1.0)*Q_vec[0];
-#else
-                    amrex::Real qvf = 1.0;
-#endif
-                Thetam_vec[k] = new_data(i,j,k,RhoTheta_comp)*qvf;
+                z_vec[k] = new_z(i,j,k);
+                Theta_vec[k] = new_data(i,j,k,RhoTheta_comp);
             }
             z_vec[kmax+1] =  new_z(i,j,kmax+1);
 
-            calc_rho_p(kmax,flag_psfc_vec[0],orig_psfc(i,j,0),Thetam_vec,
+            calc_rho_p(l_rdOcp, kmax,flag_psfc_vec[0],orig_psfc(i,j,0),Theta_vec,
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
                        Q_vec,
 #endif
                        z_vec,Rhod_vec,Rhom_vec,Pd_vec,Pm_vec);
 
             for (int k=0; k<=kmax; k++) {
-                p_hse_arr(i,j,k) =   Pd_vec[k];
-                r_hse_arr(i,j,k) = Rhod_vec[k];
+                p_hse_arr(i,j,k) = Pd_vec[k];
+                r_hse_arr(i,j,k) = Rhom_vec[k];
             }
         });
 
@@ -951,30 +986,24 @@ init_base_state_from_metgrid (const Real l_rdOcp,
         {
             for (int k=0; k<=kmax; k++) {
                 z_vec[k] = new_z(i,j,k);
-#if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
-                Q_vec[k] = Q_arr(i,j,k);
-                amrex::Real qvf = 1.0+(R_v/R_d+1.0)*Q_vec[0];
-#else
-                amrex::Real qvf = 1.0;
-#endif
-                Thetam_vec[k] = Theta_arr(i,j,k)*qvf;
+                Theta_vec[k] = Theta_arr(i,j,k);
             }
             z_vec[kmax+1] = new_z(i,j,kmax+1);
 
-            calc_rho_p(kmax,flag_psfc_vec[it],orig_psfc(i,j,0),Thetam_vec,
+            calc_rho_p(l_rdOcp, kmax,flag_psfc_vec[it],orig_psfc(i,j,0),Theta_vec,
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
                        Q_vec,
 #endif
                        z_vec,Rhod_vec,Rhom_vec,Pd_vec,Pm_vec);
 
             for (int k=0; k<=kmax; k++) {
-                p_hse_arr(i,j,k) =   Pd_vec[k];
+                p_hse_arr(i,j,k) = Pd_vec[k];
                 if (mask_c_arr(i,j,k)) {
-                    r_hse_arr(i,j,k) = Rhod_vec[k];
 #if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
-                    Q_arr(i,j,k)     = Rhod_vec[k]*Q_vec[k];
+                    Q_arr(i,j,k)     = Rhom_vec[k]*Q_vec[k];
 #endif
-                    Theta_arr(i,j,k) = Rhod_vec[k]*Theta_arr(i,j,k);
+                    r_hse_arr(i,j,k) = Rhom_vec[k];
+                    Theta_arr(i,j,k) = Rhom_vec[k]*Theta_arr(i,j,k);
                   }
             } // k
         });
