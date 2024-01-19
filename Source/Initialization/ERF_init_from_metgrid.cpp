@@ -345,9 +345,6 @@ ERF::init_from_metgrid (int lev)
                                      fabs_for_bcs, mask_c_arr);
     } // mf
 
-    // Set up boxes for lateral boundary arrays.
-    if (metgrid_bdy_width-1 <= metgrid_bdy_set_width) metgrid_bdy_set_width = metgrid_bdy_width;
-    if (metgrid_bdy_width == metgrid_bdy_set_width) metgrid_bdy_width += 1;
 
     // NOTE: fabs_for_bcs is defined over the whole domain on each rank.
     //       However, the operations needed to define the data on the ERF
@@ -362,6 +359,14 @@ ERF::init_from_metgrid (int lev)
                                    ParallelContext::CommunicatorAll());
         }
     }
+
+    // NOTE: We must guarantee one halo cell in the bdy file.
+    //       Otherwise, we make the total width match the set width.
+    if (metgrid_bdy_width-1 <= metgrid_bdy_set_width) metgrid_bdy_width = metgrid_bdy_set_width;
+#ifndef AMREX_USE_GPU
+    Print() << "Running with specification width: " << metgrid_bdy_set_width
+               << " and relaxation width: " << metgrid_bdy_width - metgrid_bdy_set_width << std::endl;
+#endif
 
     // Set up boxes for lateral boundary arrays.
     bdy_data_xlo.resize(ntimes);
@@ -465,7 +470,6 @@ ERF::init_from_metgrid (int lev)
     // we only need the whole domain processed at initialization and the lateral boundaries
     // at subsequent times. We can optimize this later if needed. For now, we need to fill
     // the lateral boundary arrays using the info set aside earlier.
-    bool multiply_rho = false;
     Box xlo_plane, xhi_plane, ylo_plane, yhi_plane;
     for (int it(0); it < ntimes; it++) {
 
@@ -476,29 +480,20 @@ ERF::init_from_metgrid (int lev)
             auto ylo_arr = bdy_data_ylo[it][ivar].array();
             auto yhi_arr = bdy_data_yhi[it][ivar].array();
             const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[it][ivar].const_array();
-// ---------------------------------------------------------------------------------------
-// DJW: remove this after debugging is complete. This enforces steady boundary conditions.
-//            const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[0][ivar].const_array();
-// ---------------------------------------------------------------------------------------
 
             if (ivar == MetGridBdyVars::U) {
-                multiply_rho = false;
                 xlo_plane = xlo_plane_x_stag; xhi_plane = xhi_plane_x_stag;
                 ylo_plane = ylo_plane_x_stag; yhi_plane = yhi_plane_x_stag;
             } else if (ivar == MetGridBdyVars::V) {
-                multiply_rho = false;
                 xlo_plane = xlo_plane_y_stag; xhi_plane = xhi_plane_y_stag;
                 ylo_plane = ylo_plane_y_stag; yhi_plane = yhi_plane_y_stag;
             } else if (ivar == MetGridBdyVars::R) {
-                multiply_rho = false;
                 xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
                 ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
             } else if (ivar == MetGridBdyVars::T) {
-                multiply_rho = false;
                 xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
                 ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
             } else if (ivar == MetGridBdyVars::QV) {
-                multiply_rho = false;
                 xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
                 ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
             } // MetGridBdyVars::QV
@@ -786,46 +781,13 @@ init_state_from_metgrid (const bool use_moisture,
             }
         }
 
-        // ********************************************************
-        // theta
-        // ********************************************************
-        { // calculate potential temperature.
-        Box bx = NC_rhum_fab[it].box() & tbxc;
-        auto const temp  = NC_temp_fab[it].const_array();
-        auto const pres  = NC_pres_fab[it].const_array();
-        auto       theta = theta_fab[it].array();
-
-        ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-        {
-            theta(i,j,k) = getThgivenPandT(temp(i,j,k),pres(i,j,k),l_rdOcp);
-// ---------------------------------------------------------------------------------------
-// DJW: remove this after debugging is complete. This enforces isothermal conditions..
-            //theta(i,j,k) = 300.0;
-// ---------------------------------------------------------------------------------------
-        });
-        }
-
-        // vertical interpolation of potential temperature.
-        {
-        Box bx2d = NC_temp_fab[it].box() & tbxc;
-        bx2d.setRange(2,0);
-        auto const orig_data = theta_fab[it].const_array();
-        auto const orig_z    = NC_ght_fab[it].const_array();
-        auto       new_data  = state_fab.array();
-        auto       bc_data   = fabs_for_bcs[it][MetGridBdyVars::T].array();
-        auto const new_z     = z_phys_nd_fab.const_array();
-        
-        int kmax = ubound(tbxc).z;
-
-        ParallelFor(bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
-        {
-            for (int k = 0; k<=kmax; k++) {
-                Real Interp_Val = interpolate_column_metgrid(i,j,k,'M',0,orig_z,orig_data,new_z);
-                if (mask_c_arr(i,j,k)) bc_data(i,j,k,0)  = Interp_Val;
-                if (it==0) new_data(i,j,k,RhoTheta_comp) = Interp_Val;
-            }
-        });
-        }
+        // TODO: TEMPORARY CODE TO RUN QUIESCENT, REMOVE WHEN NOT NEEDED.
+//        if (it == 0) {
+//            x_vel_fab.template setVal<RunOn::Device>(0.0); // TODO: temporary code to initialize with quiescent atmosphere.
+//            y_vel_fab.template setVal<RunOn::Device>(0.0); // TODO: temporary code to initialize with quiescent atmosphere.
+//        }
+//        fabs_for_bcs[it][MetGridBdyVars::U].template setVal<RunOn::Device>(0.0); // TODO: temporary code to force with quiescent atmosphere.
+//        fabs_for_bcs[it][MetGridBdyVars::V].template setVal<RunOn::Device>(0.0); // TODO: temporary code to force with quiescent atmosphere.
 
     } // it
 }
@@ -965,9 +927,9 @@ init_base_state_from_metgrid (const bool use_moisture,
             for (int k=0; k<=kmax; k++) {
                 p_hse_arr(i,j,k) = Pd_vec[k];
                 if (mask_c_arr(i,j,k)) {
-                    r_hse_arr(i,j,k) = Rhod_vec[k];
-                    Q_arr(i,j,k) = (use_moisture) ? Rhod_vec[k]*Q_vec[k] : 0.0;
-                    Theta_arr(i,j,k) = Rhod_vec[k]*Theta_vec[k];
+                    r_hse_arr(i,j,k) = Rhom_vec[k];
+                    if (use_moisture) Q_arr(i,j,k) = Rhom_vec[k]*Q_vec[k];
+                    Theta_arr(i,j,k) = Rhom_vec[k]*Theta_vec[k];
                   }
             } // k
         });
