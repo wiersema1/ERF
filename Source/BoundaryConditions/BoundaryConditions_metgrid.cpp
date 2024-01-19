@@ -15,7 +15,7 @@ void
 ERF::fill_from_metgrid (const Vector<MultiFab*>& mfs,
                         const Real time,
                         bool cons_only,
-                        int /*icomp_cons*/,
+                        int icomp_cons,
                         int ncomp_cons)
 {
     int lev = 0;
@@ -64,6 +64,9 @@ ERF::fill_from_metgrid (const Vector<MultiFab*>& mfs,
         const auto& dom_lo = amrex::lbound(domain);
         const auto& dom_hi = amrex::ubound(domain);
 
+        // Offset only applys to cons (we may fill a subset of these vars)
+        int offset = (var_idx == Vars::cons) ? icomp_cons : 0;
+
         // Loop over each component
         for (int comp_idx(offset); comp_idx < (comp_var[var_idx]+offset); ++comp_idx)
         {
@@ -76,21 +79,6 @@ ERF::fill_from_metgrid (const Vector<MultiFab*>& mfs,
             {
                 int ivar  = ind_map[var_idx][comp_idx];
                 IntVect ng_vect = mf.nGrowVect(); ng_vect[2] = 0;
-
-                if (ivar == MetGridBdyVars::U) {
-                    amrex::Print() << "fill_from_metgrid U   var_idx=" << var_idx << "  comp_idx=" << comp_idx << "  ivar=" << ivar << "  ng_vect=" << ng_vect << std::endl;
-                } else if (ivar == MetGridBdyVars::V) {
-                    amrex::Print() << "fill_from_metgrid V   var_idx=" << var_idx << "  comp_idx=" << comp_idx << "  ivar=" << ivar << "  ng_vect=" << ng_vect << std::endl;
-                } else if (ivar == MetGridBdyVars::R) {
-                    amrex::Print() << "fill_from_metgrid R   var_idx=" << var_idx << "  comp_idx=" << comp_idx << "  ivar=" << ivar << "  ng_vect=" << ng_vect << std::endl;
-                } else if (ivar == MetGridBdyVars::T) {
-                    amrex::Print() << "fill_from_metgrid T   var_idx=" << var_idx << "  comp_idx=" << comp_idx << "  ivar=" << ivar << "  ng_vect=" << ng_vect << std::endl;
-                } else if (ivar == MetGridBdyVars::QV) {
-                    amrex::Print() << "fill_from_metgrid QV  var_idx=" << var_idx << "  comp_idx=" << comp_idx << "  ivar=" << ivar << "  ng_vect=" << ng_vect << std::endl;
-                } else {
-                    amrex::Print() << "fill_from_metgrid UNKNOWN" << std::endl;
-                }
-                amrex::Print() << " n_time=" << n_time << " \toma=" << oma << " \talpha=" << alpha << std::endl;
 
                 // We have data at fixed time intervals we will call dT
                 // Then to interpolate, given time, we can define n = (time/dT)
@@ -117,35 +105,6 @@ ERF::fill_from_metgrid (const Vector<MultiFab*>& mfs,
                     compute_interior_ghost_bxs_xy(gbx, domain, width, 0,
                                                   bx_xlo, bx_xhi,
                                                   bx_ylo, bx_yhi, ng_vect);
-
-                    amrex::AllPrint() << "fill_from_metgrid bx_xlo=" << bx_xlo << std::endl;
-                    amrex::AllPrint() << "fill_from_metgrid bx_xhi=" << bx_xhi << std::endl;
-                    amrex::AllPrint() << "fill_from_metgrid bx_ylo=" << bx_ylo << std::endl;
-                    amrex::AllPrint() << "fill_from_metgrid bx_yhi=" << bx_yhi << std::endl;
-                    if (ivar == MetGridBdyVars::QV) {
-                        amrex::Print() << " QV BEFORE" << std::endl;
-                        int jj = (dom_hi.y - dom_lo.y)/2+dom_lo.y;
-                        for (int kk = 9; kk >= 0; kk--) {
-                            for (int ii = 0; ii < 10; ii++) {
-                                amrex::Print() << " " << dest_arr(ii,jj,kk,comp_idx);
-                            }
-                            amrex::Print() << std::endl;
-                        }
-                        amrex::Print() << " bdatxlo_n" << std::endl;
-                        for (int k = 9; k >= 0; k--) {
-                            for (int ii = std::max(dom_lo.x, amrex::lbound(bx_xlo).x); ii <= std::min(dom_hi.x, amrex::ubound(bx_xlo).x); ii++) {
-                                amrex::Print() << " " << bdatxlo_n(ii,jj,k,0);
-                            }
-                            amrex::Print() << std::endl;
-                        }
-                        amrex::Print() << " bdatxlo_np1" << std::endl;
-                        for (int k = 9; k >= 0; k--) {
-                            for (int ii = std::max(dom_lo.x, amrex::lbound(bx_xlo).x); ii <= std::min(dom_hi.x, amrex::ubound(bx_xlo).x); ii++) {
-                                amrex::Print() << " " << bdatxlo_np1(ii,jj,k,0);
-                            }
-                            amrex::Print() << std::endl;
-                        }
-                    }
 
                     // x-faces (includes exterior y ghost cells)
                     ParallelFor(bx_xlo, bx_xhi,
@@ -180,17 +139,6 @@ ERF::fill_from_metgrid (const Vector<MultiFab*>& mfs,
                         dest_arr(i,j,k,comp_idx) = oma   * bdatyhi_n  (i,jj,k,0)
                                                  + alpha * bdatyhi_np1(i,jj,k,0);
                     });
-
-                    if (ivar == MetGridBdyVars::QV) {
-                        amrex::Print() << " QV AFTER" << std::endl;
-                        int jj = (dom_hi.y - dom_lo.y)/2+dom_lo.y;
-                        for (int kk = 9; kk >= 0; kk--) {
-                            for (int ii = 0; ii < 10; ii++) {
-                                amrex::Print() << " " << dest_arr(ii,jj,kk,comp_idx);
-                            }
-                            amrex::Print() << std::endl;
-                        }
-                    }
                 } // mfi
 
             // Variable not read or computed from met_em files

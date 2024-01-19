@@ -17,19 +17,19 @@ ERF::init_from_metgrid (int lev)
 {
     bool use_moisture = (solverChoice.moisture_type != MoistureType::None);
     if (use_moisture) {
-        amrex::Print() << "Init with met_em with valid moisture model." << std::endl;
+        Print() << "Init with met_em with valid moisture model." << std::endl;
     } else {
-        amrex::Print() << "Init with met_em without moisture model." << std::endl;
+        Print() << "Init with met_em without moisture model." << std::endl;
     }
 
     int nboxes = num_boxes_at_level[lev];
     int ntimes = num_files_at_level[lev];
 
     if (nc_init_file.empty())
-        amrex::Error("NetCDF initialization file name must be provided via input");
+        Error("NetCDF initialization file name must be provided via input");
 
     if (nc_init_file[lev].empty())
-        amrex::Error("NetCDF initialization file name must be provided via input");
+        Error("NetCDF initialization file name must be provided via input");
 
     // At least two met_em files are necessary to calculate tendency terms.
     AMREX_ALWAYS_ASSERT(ntimes >= 2);
@@ -72,7 +72,7 @@ ERF::init_from_metgrid (int lev)
 
     for (int it = 0; it < ntimes; it++) {
 #ifndef AMREX_USE_GPU
-        amrex::AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << ": nc_init_file[" << lev << "][" << it << "]\t" << nc_init_file[lev][it] << std::endl;
+        AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << ": nc_init_file[" << lev << "][" << it << "]\t" << nc_init_file[lev][it] << std::endl;
 #endif
         read_from_metgrid(lev, boxes_at_level[lev][0], nc_init_file[lev][it],
                           NC_dateTime[it], NC_epochTime[it],
@@ -85,18 +85,18 @@ ERF::init_from_metgrid (int lev)
                           NC_MSFU_fab[it], NC_MSFV_fab[it], NC_MSFM_fab[it],
                           NC_sst_fab[it],  NC_lmask_iab[it]);
 #ifndef AMREX_USE_GPU
-        amrex::AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": flag_psfc   \t" << flag_psfc[it] << std::endl;
-        amrex::AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": flag_msfu   \t" << flag_msfu[it] << std::endl;
-        amrex::AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": flag_msfv   \t" << flag_msfv[it] << std::endl;
-        amrex::AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": flag_msfm   \t" << flag_msfm[it] << std::endl;
-        amrex::AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": flag_hgt    \t" << flag_hgt[it] << std::endl;
-        amrex::AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": NC_nx       \t" << NC_nx[it] << std::endl;
-        amrex::AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": NC_ny       \t" << NC_ny[it] << std::endl;
-        amrex::AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": NC_dx       \t" << NC_dx[it] << std::endl;
-        amrex::AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": NC_dy       \t" << NC_dy[it] << std::endl;
-        amrex::AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": NC_epochTime\t" << NC_epochTime[it] << std::endl;
+        AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": flag_psfc   \t" << flag_psfc[it] << std::endl;
+        AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": flag_msfu   \t" << flag_msfu[it] << std::endl;
+        AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": flag_msfv   \t" << flag_msfv[it] << std::endl;
+        AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": flag_msfm   \t" << flag_msfm[it] << std::endl;
+        AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": flag_hgt    \t" << flag_hgt[it] << std::endl;
+        AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": NC_nx       \t" << NC_nx[it] << std::endl;
+        AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": NC_ny       \t" << NC_ny[it] << std::endl;
+        AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": NC_dx       \t" << NC_dx[it] << std::endl;
+        AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": NC_dy       \t" << NC_dy[it] << std::endl;
+        AllPrint() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << " it-" << it << ": NC_epochTime\t" << NC_epochTime[it] << std::endl;
         // NC_dateTime is only on the IOProcessor.
-        amrex::Print() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << ": NC_dateTime \t" << NC_dateTime[it] << std::endl;
+        Print() << " DJW init_from_metgrid proc-" << ParallelDescriptor::MyProc() << ": NC_dateTime \t" << NC_dateTime[it] << std::endl;
 #endif
     } // it
 
@@ -115,9 +115,9 @@ ERF::init_from_metgrid (int lev)
     for (int it = 1; it < ntimes; it++) {
         Real NC_dt = NC_epochTime[it]-NC_epochTime[it-1];
 #ifndef AMREX_USE_GPU
-        amrex::Print() << " " << nc_init_file[lev][it-1] << " / " << nc_init_file[lev][it] << " are " << NC_dt << " seconds apart" << std::endl;
+        Print() << " " << nc_init_file[lev][it-1] << " / " << nc_init_file[lev][it] << " are " << NC_dt << " seconds apart" << std::endl;
 #endif
-        if (NC_dt != bdy_time_interval) amrex::Error("Time interval between consecutive met_em files must be consistent.");
+        if (NC_dt != bdy_time_interval) Error("Time interval between consecutive met_em files must be consistent.");
     }
 
     // Set up a FAB for mixing ratio and another for potential temperature.
@@ -178,8 +178,8 @@ ERF::init_from_metgrid (int lev)
                 const Array4<const Real>& src_arr = src.const_array();
                 ParallelFor(gtbx, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
                 {
-                    int li = amrex::min(amrex::max(i, i_lo), i_hi);
-                    int lj = amrex::min(amrex::max(j, j_lo), j_hi);
+                    int li = min(max(i, i_lo), i_hi);
+                    int lj = min(max(j, j_lo), j_hi);
                     dst_arr(i,j,0) = src_arr(li,lj,0);
                 });
             }
@@ -199,8 +199,8 @@ ERF::init_from_metgrid (int lev)
                 const Array4<const int>& src_arr = src.const_array();
                 ParallelFor(gtbx, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
                 {
-                    int li = amrex::min(amrex::max(i, i_lo), i_hi);
-                    int lj = amrex::min(amrex::max(j, j_lo), j_hi);
+                    int li = min(max(i, i_lo), i_hi);
+                    int lj = min(max(j, j_lo), j_hi);
                     dst_arr(i,j,0) = src_arr(li,lj,0);
                 });
             }
@@ -231,7 +231,7 @@ ERF::init_from_metgrid (int lev)
     if (use_moisture) MetGridBdyEnd = MetGridBdyVars::NumTypes;
 
     // Zero out fabs_for_bcs on the global domain
-    amrex::Vector<amrex::Vector<FArrayBox>> fabs_for_bcs;
+    Vector<Vector<FArrayBox>> fabs_for_bcs;
     fabs_for_bcs.resize(ntimes);
     for (int it(0); it < ntimes; it++) {
         fabs_for_bcs[it].resize(MetGridBdyEnd);
@@ -243,16 +243,16 @@ ERF::init_from_metgrid (int lev)
                 ldomain = geom[lev].Domain();
                 ldomain.convert(IntVect(1,0,0));
                 auto ng = lev_new[Vars::xvel].nGrowVect();
-                gdomain = amrex::grow(ldomain,ng);
+                gdomain = grow(ldomain,ng);
             } else if (nvar==MetGridBdyVars::V) {
                 ldomain = geom[lev].Domain();
                 ldomain.convert(IntVect(0,1,0));
                 auto ng = lev_new[Vars::yvel].nGrowVect();
-                gdomain = amrex::grow(ldomain,ng);
+                gdomain = grow(ldomain,ng);
             } else {
                 ldomain = geom[lev].Domain();
                 auto ng = lev_new[Vars::cons].nGrowVect();
-                gdomain = amrex::grow(ldomain,ng);
+                gdomain = grow(ldomain,ng);
             }
 #ifdef AMREX_USE_GPU
             fabs_for_bcs[it][nvar].resize(gdomain, 1, The_Pinned_Arena());
@@ -357,20 +357,9 @@ ERF::init_from_metgrid (int lev)
     //       complete data set; initialized to 0 above.
     for (int it(0); it < ntimes; it++) {
         for (int nvar(0); nvar<MetGridBdyEnd; ++nvar) {
-            amrex::ParallelAllReduce::Sum(fabs_for_bcs[it][nvar].dataPtr(),
-                                          fabs_for_bcs[it][nvar].size(),
-                                          ParallelContext::CommunicatorAll());
-        }
-    }
-
-    for (int it(0); it < ntimes; it++) {
-        const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[it][MetGridBdyVars::QV].const_array();
-        amrex::Print() << " fabs_for_bcs[" << it << "][" << MetGridBdyVars::QV << "] after ParallelAllReduce::Sum" << std::endl;
-        for (int k=9; k >= 0; k--) {
-            for (int ii=0; ii <= 9; ii++) {
-                amrex::Print() << " " << fabs_for_bcs_arr(ii, 40, k);
-            }
-            amrex::Print() << std::endl;
+            ParallelAllReduce::Sum(fabs_for_bcs[it][nvar].dataPtr(),
+                                   fabs_for_bcs[it][nvar].size(),
+                                   ParallelContext::CommunicatorAll());
         }
     }
 
@@ -382,8 +371,8 @@ ERF::init_from_metgrid (int lev)
 
     const auto& lo = geom[lev].Domain().loVect();
     const auto& hi = geom[lev].Domain().hiVect();
-    amrex::IntVect plo(lo);
-    amrex::IntVect phi(hi);
+    IntVect plo(lo);
+    IntVect phi(hi);
 
     plo[0] = lo[0];                     plo[1] = lo[1]; plo[2] = lo[2];
     phi[0] = lo[0]+metgrid_bdy_width-1; phi[1] = hi[1]; phi[2] = hi[2];
@@ -414,65 +403,60 @@ ERF::init_from_metgrid (int lev)
     Box yhi_plane_y_stag = pbx_yhi; yhi_plane_y_stag.shiftHalf(1,1);
 
 #ifndef AMREX_USE_GPU
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tplo               \t" << plo << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tphi               \t" << phi << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane_no_stag \t" << xlo_plane_no_stag << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane_x_stag  \t" << xlo_plane_x_stag << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane_y_stag  \t" << xlo_plane_y_stag << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tplo               \t" << plo << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tphi               \t" << phi << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane_no_stag \t" << xhi_plane_no_stag << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane_x_stag  \t" << xhi_plane_x_stag << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane_y_stag  \t" << xhi_plane_y_stag << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tplo               \t" << plo << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tphi               \t" << phi << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane_no_stag \t" << ylo_plane_no_stag << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane_x_stag  \t" << ylo_plane_x_stag << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane_y_stag  \t" << ylo_plane_y_stag << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tplo               \t" << plo << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tphi               \t" << phi << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane_no_stag \t" << yhi_plane_no_stag << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane_x_stag  \t" << yhi_plane_x_stag << std::endl;
-    amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane_y_stag  \t" << yhi_plane_y_stag << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tplo               \t" << plo << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tphi               \t" << phi << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane_no_stag \t" << xlo_plane_no_stag << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane_x_stag  \t" << xlo_plane_x_stag << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane_y_stag  \t" << xlo_plane_y_stag << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tplo               \t" << plo << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tphi               \t" << phi << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane_no_stag \t" << xhi_plane_no_stag << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane_x_stag  \t" << xhi_plane_x_stag << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane_y_stag  \t" << xhi_plane_y_stag << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tplo               \t" << plo << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tphi               \t" << phi << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane_no_stag \t" << ylo_plane_no_stag << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane_x_stag  \t" << ylo_plane_x_stag << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane_y_stag  \t" << ylo_plane_y_stag << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tplo               \t" << plo << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tphi               \t" << phi << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane_no_stag \t" << yhi_plane_no_stag << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane_x_stag  \t" << yhi_plane_x_stag << std::endl;
+    AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane_y_stag  \t" << yhi_plane_y_stag << std::endl;
 #endif
 
     for (int ivar(MetGridBdyVars::U); ivar < MetGridBdyEnd; ivar++) {
         for (int it(0); it < ntimes; it++) {
             if (ivar == MetGridBdyVars::U) {
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tbdy_data_*[" << it << "] for U" << std::endl;
                 bdy_data_xlo[it].push_back(FArrayBox(xlo_plane_x_stag, 1));
                 bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_x_stag, 1));
                 bdy_data_ylo[it].push_back(FArrayBox(ylo_plane_x_stag, 1));
                 bdy_data_yhi[it].push_back(FArrayBox(yhi_plane_x_stag, 1));
             } else if (ivar == MetGridBdyVars::V) {
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tbdy_data_*[" << it << "] for V" << std::endl;
                 bdy_data_xlo[it].push_back(FArrayBox(xlo_plane_y_stag, 1));
                 bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_y_stag, 1));
                 bdy_data_ylo[it].push_back(FArrayBox(ylo_plane_y_stag, 1));
                 bdy_data_yhi[it].push_back(FArrayBox(yhi_plane_y_stag, 1));
             } else if (ivar == MetGridBdyVars::R) {
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tbdy_data_*[" << it << "] for R" << std::endl;
                 bdy_data_xlo[it].push_back(FArrayBox(xlo_plane_no_stag, 1));
                 bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_no_stag, 1));
                 bdy_data_ylo[it].push_back(FArrayBox(ylo_plane_no_stag, 1));
                 bdy_data_yhi[it].push_back(FArrayBox(yhi_plane_no_stag, 1));
             } else if (ivar == MetGridBdyVars::T) {
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tbdy_data_*[" << it << "] for T" << std::endl;
                 bdy_data_xlo[it].push_back(FArrayBox(xlo_plane_no_stag, 1));
                 bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_no_stag, 1));
                 bdy_data_ylo[it].push_back(FArrayBox(ylo_plane_no_stag, 1));
                 bdy_data_yhi[it].push_back(FArrayBox(yhi_plane_no_stag, 1));
             } else if (ivar == MetGridBdyVars::QV) {
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tbdy_data_*[" << it << "] for QV" << std::endl;
                 bdy_data_xlo[it].push_back(FArrayBox(xlo_plane_no_stag, 1));
                 bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_no_stag, 1));
                 bdy_data_ylo[it].push_back(FArrayBox(ylo_plane_no_stag, 1));
                 bdy_data_yhi[it].push_back(FArrayBox(yhi_plane_no_stag, 1));
             } else {
 #ifndef AMREX_USE_GPU
-                amrex::Print() << "Unexpected ivar " << ivar << std::endl;
+                Print() << "Unexpected ivar " << ivar << std::endl;
 #endif
-                amrex::Abort("See Initialization/ERF_init_from_metgrid.cpp");
+                Abort("See Initialization/ERF_init_from_metgrid.cpp");
             }
         } // it
     } // ivar
@@ -482,7 +466,7 @@ ERF::init_from_metgrid (int lev)
     // at subsequent times. We can optimize this later if needed. For now, we need to fill
     // the lateral boundary arrays using the info set aside earlier.
     bool multiply_rho = false;
-    amrex::Box xlo_plane, xhi_plane, ylo_plane, yhi_plane;
+    Box xlo_plane, xhi_plane, ylo_plane, yhi_plane;
     for (int it(0); it < ntimes; it++) {
 
         for (int ivar(MetGridBdyVars::U); ivar < MetGridBdyEnd; ivar++) {
@@ -501,42 +485,22 @@ ERF::init_from_metgrid (int lev)
                 multiply_rho = false;
                 xlo_plane = xlo_plane_x_stag; xhi_plane = xhi_plane_x_stag;
                 ylo_plane = ylo_plane_x_stag; yhi_plane = yhi_plane_x_stag;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane " << xlo_plane << " \tfor U" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane " << xhi_plane << " \tfor U" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane " << ylo_plane << " \tfor U" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane " << yhi_plane << " \tfor U" << std::endl;
             } else if (ivar == MetGridBdyVars::V) {
                 multiply_rho = false;
                 xlo_plane = xlo_plane_y_stag; xhi_plane = xhi_plane_y_stag;
                 ylo_plane = ylo_plane_y_stag; yhi_plane = yhi_plane_y_stag;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane " << xlo_plane << " \tfor V" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane " << xhi_plane << " \tfor V" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane " << ylo_plane << " \tfor V" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane " << yhi_plane << " \tfor V" << std::endl;
             } else if (ivar == MetGridBdyVars::R) {
                 multiply_rho = false;
                 xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
                 ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane " << xlo_plane << " \tfor R" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane " << xhi_plane << " \tfor R" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane " << ylo_plane << " \tfor R" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane " << yhi_plane << " \tfor R" << std::endl;
             } else if (ivar == MetGridBdyVars::T) {
                 multiply_rho = false;
                 xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
                 ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane " << xlo_plane << " \tfor T" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane " << xhi_plane << " \tfor T" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane " << ylo_plane << " \tfor T" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane " << yhi_plane << " \tfor T" << std::endl;
             } else if (ivar == MetGridBdyVars::QV) {
                 multiply_rho = false;
                 xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
                 ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txlo_plane " << xlo_plane << " \tfor QV" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \txhi_plane " << xhi_plane << " \tfor QV" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tylo_plane " << ylo_plane << " \tfor QV" << std::endl;
-                amrex::AllPrint() << " proc-" << ParallelDescriptor::MyProc() << " \tyhi_plane " << yhi_plane << " \tfor QV" << std::endl;
             } // MetGridBdyVars::QV
 
             // west boundary
@@ -578,8 +542,8 @@ init_terrain_from_metgrid (FArrayBox& z_phys_nd_fab,
 
    for (int it = 0; it < ntimes; it++) {
 #ifndef AMREX_USE_GPU
-        amrex::Print() << " SIZE OF HGT FAB " << NC_hgt_fab[it].box() << std::endl;
-        amrex::Print() << " SIZE OF ZP FAB "  << z_phys_nd_fab.box() << std::endl;
+        Print() << " SIZE OF HGT FAB " << NC_hgt_fab[it].box() << std::endl;
+        Print() << " SIZE OF ZP FAB "  << z_phys_nd_fab.box() << std::endl;
 #endif
 
         // This copies from NC_zphys on z-faces to z_phys_nd on nodes
@@ -602,8 +566,8 @@ init_terrain_from_metgrid (FArrayBox& z_phys_nd_fab,
         Box bxv = bx; bxv.growHi(1,1);
 
 #ifndef AMREX_USE_GPU
-        amrex::Print() << "FROM BOX " << from_box << std::endl;
-        amrex::Print() << "BX " << bx << std::endl;
+        Print() << "FROM BOX " << from_box << std::endl;
+        Print() << "BX " << bx << std::endl;
 #endif
 
         ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
@@ -657,10 +621,10 @@ init_state_from_metgrid (const bool use_moisture,
                          const Vector<FArrayBox>& NC_pres_fab,
                          Vector<FArrayBox>& theta_fab,
                          Vector<FArrayBox>& mxrat_fab,
-                         amrex::Vector<amrex::Vector<FArrayBox>>& fabs_for_bcs,
-                         const amrex::Array4<const int>& mask_c_arr,
-                         const amrex::Array4<const int>& mask_u_arr,
-                         const amrex::Array4<const int>& mask_v_arr)
+                         Vector<Vector<FArrayBox>>& fabs_for_bcs,
+                         const Array4<const int>& mask_c_arr,
+                         const Array4<const int>& mask_u_arr,
+                         const Array4<const int>& mask_v_arr)
 {
     int ntimes = NC_hgt_fab.size();
     for (int it = 0; it < ntimes; it++)
@@ -677,7 +641,7 @@ init_state_from_metgrid (const bool use_moisture,
         auto       bc_data   = fabs_for_bcs[it][MetGridBdyVars::U].array();
         auto const new_z     = z_phys_nd_fab.const_array();
 
-        int kmax = amrex::ubound(tbxu).z;
+        int kmax = ubound(tbxu).z;
 
         ParallelFor(bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
         {
@@ -687,13 +651,6 @@ init_state_from_metgrid (const bool use_moisture,
                 if (it==0) new_data(i,j,k,0) = Interp_Val;
             }
         });
-        amrex::Print() << " mask_u_arr" << std::endl;
-        for (int k=9; k >= 0; k--) {
-            for (int ii=0; ii >= 3; ii++) {
-                amrex::Print() << " " << mask_u_arr(ii,40,k);
-            }
-            amrex::Print() << std::endl;
-        }
         }
 
 
@@ -709,7 +666,7 @@ init_state_from_metgrid (const bool use_moisture,
         auto       bc_data   = fabs_for_bcs[it][MetGridBdyVars::V].array();
         auto const new_z     = z_phys_nd_fab.const_array();
 
-        int kmax = amrex::ubound(tbxv).z;
+        int kmax = ubound(tbxv).z;
 
         ParallelFor(bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
         {
@@ -771,7 +728,7 @@ init_state_from_metgrid (const bool use_moisture,
         auto       bc_data   = fabs_for_bcs[it][MetGridBdyVars::T].array();
         auto const new_z     = z_phys_nd_fab.const_array();
 
-        int kmax = amrex::ubound(tbxc).z;
+        int kmax = ubound(tbxc).z;
 
         ParallelFor(bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
         {
@@ -815,7 +772,7 @@ init_state_from_metgrid (const bool use_moisture,
                 auto       bc_data   = fabs_for_bcs[it][MetGridBdyVars::QV].array();
                 auto const new_z     = z_phys_nd_fab.const_array();
 
-                int kmax = amrex::ubound(tbxc).z;
+                int kmax = ubound(tbxc).z;
 
                 int state_indx = RhoQ1_comp;
                 ParallelFor(bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
@@ -858,7 +815,7 @@ init_state_from_metgrid (const bool use_moisture,
         auto       bc_data   = fabs_for_bcs[it][MetGridBdyVars::T].array();
         auto const new_z     = z_phys_nd_fab.const_array();
         
-        int kmax = amrex::ubound(tbxc).z;
+        int kmax = ubound(tbxc).z;
 
         ParallelFor(bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
         {
@@ -902,20 +859,19 @@ init_base_state_from_metgrid (const bool use_moisture,
                               const Vector<FArrayBox>& NC_ght_fab,
                               const Vector<FArrayBox>& NC_psfc_fab,
                               Vector<Vector<FArrayBox>>& fabs_for_bcs,
-                              const amrex::Array4<const int>& mask_c_arr)
+                              const Array4<const int>& mask_c_arr)
 {
     int RhoQ_comp = RhoQ1_comp;
-    int kmax = amrex::ubound(valid_bx).z;
+    int kmax = ubound(valid_bx).z;
 
     // Device vectors for columnwise operations
-    Gpu::DeviceVector<Real>      z_vec_d(kmax+2,0); Real* z_vec      =      z_vec_d.data();
-    Gpu::DeviceVector<Real> Thetad_vec_d(kmax+1,0); Real* Thetad_vec = Thetad_vec_d.data();
-    Gpu::DeviceVector<Real> Thetam_vec_d(kmax+1,0); Real* Thetam_vec = Thetam_vec_d.data();
-    Gpu::DeviceVector<Real>   Rhod_vec_d(kmax+1,0); Real* Rhod_vec   =   Rhod_vec_d.data();
-    Gpu::DeviceVector<Real>   Rhom_vec_d(kmax+1,0); Real* Rhom_vec   =   Rhom_vec_d.data();
-    Gpu::DeviceVector<Real>     Pd_vec_d(kmax+1,0); Real* Pd_vec     =     Pd_vec_d.data();
-    Gpu::DeviceVector<Real>     Pm_vec_d(kmax+1,0); Real* Pm_vec     =     Pm_vec_d.data();
-    Gpu::DeviceVector<Real>      Q_vec_d(kmax+1,0); Real* Q_vec      =      Q_vec_d.data();
+    Gpu::DeviceVector<Real>     z_vec_d(kmax+2,0); Real* z_vec     =     z_vec_d.data();
+    Gpu::DeviceVector<Real> Theta_vec_d(kmax+1,0); Real* Theta_vec = Theta_vec_d.data();
+    Gpu::DeviceVector<Real>  Rhod_vec_d(kmax+1,0); Real* Rhod_vec  =  Rhod_vec_d.data();
+    Gpu::DeviceVector<Real>  Rhom_vec_d(kmax+1,0); Real* Rhom_vec  =  Rhom_vec_d.data();
+    Gpu::DeviceVector<Real>    Pd_vec_d(kmax+1,0); Real* Pd_vec    =    Pd_vec_d.data();
+    Gpu::DeviceVector<Real>    Pm_vec_d(kmax+1,0); Real* Pm_vec    =    Pm_vec_d.data();
+    Gpu::DeviceVector<Real>     Q_vec_d(kmax+1,0); Real* Q_vec     =     Q_vec_d.data();
 
     // Device vectors for psfc flags
     Gpu::DeviceVector<int>flag_psfc_d(flag_psfc.size());
@@ -940,15 +896,14 @@ init_base_state_from_metgrid (const bool use_moisture,
         ParallelFor(valid_bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
         {
             for (int k=0; k<=kmax; k++) {
-                     z_vec[k] = new_z(i,j,k);
-                Thetad_vec[k] = new_data(i,j,k,RhoTheta_comp);
-                    Q_vec[k]  = (use_moisture) ? new_data(i,j,k,RhoQ_comp) : 0.0;
+                z_vec[k] = new_z(i,j,k);
+                Theta_vec[k] = new_data(i,j,k,RhoTheta_comp);
+                Q_vec[k] = (use_moisture) ? new_data(i,j,k,RhoQ_comp) : 0.0;
             }
             z_vec[kmax+1] =  new_z(i,j,kmax+1);
 
-            calc_rho_p(kmax,flag_psfc_vec[0],orig_psfc(i,j,0),Thetad_vec,Thetam_vec,
-                       Q_vec,
-                       z_vec,Rhod_vec,Rhom_vec,Pd_vec,Pm_vec);
+            calc_rho_p(l_rdOcp,kmax,flag_psfc_vec[0],orig_psfc(i,j,0),Theta_vec,
+                       Q_vec,z_vec,Rhod_vec,Rhom_vec,Pd_vec,Pm_vec);
 
             for (int k=0; k<=kmax; k++) {
                 p_hse_arr(i,j,k) = Pd_vec[k];
@@ -998,22 +953,21 @@ init_base_state_from_metgrid (const bool use_moisture,
         ParallelFor(valid_bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
         {
             for (int k=0; k<=kmax; k++) {
-                     z_vec[k] = new_z(i,j,k);
-                Thetad_vec[k] = Theta_arr(i,j,k);
+                z_vec[k] = new_z(i,j,k);
+                Theta_vec[k] = Theta_arr(i,j,k);
                 Q_vec[k] = (use_moisture) ? Q_arr(i,j,k) : 0.0;
             }
             z_vec[kmax+1] = new_z(i,j,kmax+1);
 
-            calc_rho_p(kmax,flag_psfc_vec[it],orig_psfc(i,j,0),Thetad_vec,Thetam_vec,
-                       Q_vec,
-                       z_vec,Rhod_vec,Rhom_vec,Pd_vec,Pm_vec);
+            calc_rho_p(l_rdOcp,kmax,flag_psfc_vec[it],orig_psfc(i,j,0),Theta_vec,
+                       Q_vec,z_vec,Rhod_vec,Rhom_vec,Pd_vec,Pm_vec);
 
             for (int k=0; k<=kmax; k++) {
                 p_hse_arr(i,j,k) = Pd_vec[k];
                 if (mask_c_arr(i,j,k)) {
                     r_hse_arr(i,j,k) = Rhod_vec[k];
-                    Q_arr(i,j,k)     = (use_moisture) ? Rhod_vec[k]*Q_vec[k] : 0.0;
-                    Theta_arr(i,j,k) = Rhod_vec[k]*Thetad_vec[k];
+                    Q_arr(i,j,k) = (use_moisture) ? Rhod_vec[k]*Q_vec[k] : 0.0;
+                    Theta_arr(i,j,k) = Rhod_vec[k]*Theta_vec[k];
                   }
             } // k
         });
@@ -1058,7 +1012,7 @@ init_msfs_from_metgrid (FArrayBox& msfu_fab,
             msfm_fab.template copy<RunOn::Device>(NC_MSFM_fab[it]);
         } else {
 #ifndef AMREX_USE_GPU
-            amrex::Print() << " MAPFAC_M not present in met_em files. Setting to 1.0" << std::endl;
+            Print() << " MAPFAC_M not present in met_em files. Setting to 1.0" << std::endl;
 #endif
             msfm_fab.template setVal<RunOn::Device>(1.0);
         }
@@ -1068,7 +1022,7 @@ init_msfs_from_metgrid (FArrayBox& msfu_fab,
             msfu_fab.template copy<RunOn::Device>(NC_MSFU_fab[it]);
         } else {
 #ifndef AMREX_USE_GPU
-            amrex::Print() << " MAPFAC_U not present in met_em files. Setting to 1.0" << std::endl;
+            Print() << " MAPFAC_U not present in met_em files. Setting to 1.0" << std::endl;
 #endif
             msfu_fab.template setVal<RunOn::Device>(1.0);
         }
@@ -1078,7 +1032,7 @@ init_msfs_from_metgrid (FArrayBox& msfu_fab,
             msfv_fab.template copy<RunOn::Device>(NC_MSFV_fab[it]);
         } else {
 #ifndef AMREX_USE_GPU
-            amrex::Print() << " MAPFAC_V not present in met_em files. Setting to 1.0" << std::endl;
+            Print() << " MAPFAC_V not present in met_em files. Setting to 1.0" << std::endl;
 #endif
             msfv_fab.template setVal<RunOn::Device>(1.0);
         }

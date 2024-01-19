@@ -437,8 +437,6 @@ wrfbdy_compute_interior_ghost_rhs (const std::string& init_type,
         }
     } // mfi
 
-//    return; // DJW debugging return statement to shut off relaxation zone.
-
     // Compute RHS in relaxation region
     //==========================================================
     for (int ivar(ivarU); ivar < BdyEnd; ivar++)

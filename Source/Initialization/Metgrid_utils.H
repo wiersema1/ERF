@@ -98,7 +98,7 @@ init_base_state_from_metgrid (const bool use_moisture,
 AMREX_FORCE_INLINE
 AMREX_GPU_DEVICE
 void
-calc_rho_p (const amrex::Real& rdOcp,
+calc_rho_p (const amrex::Real& l_rdOcp,
             const int& kmax,
             const int& flag_psfc,
             const amrex::Real& psfc,
@@ -122,7 +122,7 @@ calc_rho_p (const amrex::Real& rdOcp,
     }
 
     // calculate moist density at the surface.
-    Rhom_vec[0] = getRhogivenThetaPress(Theta_vec[0], Pm_vec[0], rdOcp, Q)*(1.0+Q);
+    Rhom_vec[0] = getRhogivenThetaPress(Theta_vec[0], Pm_vec[0], l_rdOcp, Q_vec[0])*(1.0+Q_vec[0]);
 
     // integrate from the surface to the top boundary.
     for (int k=1; k<=kmax; k++) {
@@ -131,35 +131,20 @@ calc_rho_p (const amrex::Real& rdOcp,
         for (int it=0; it<maxiter; it++) {
             Pm_vec[k] = Pm_vec[k-1]-0.5*dz*(Rhom_vec[k]+Rhom_vec[k-1])*CONST_GRAV;
             if (Pm_vec[k] < 0.0) Pm_vec[k] = 0.0;
-#if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
-            Q = Q_vec[k];
-#else
-            Q = 0.0
-#endif
-            Rhom_vec[k] = getRhogivenThetaPress(Theta_vec[k], Pm_vec[k], rdOcp, Q)*(1.0+Q);
+            Rhom_vec[k] = getRhogivenThetaPress(Theta_vec[k], Pm_vec[k], l_rdOcp, Q_vec[k])*(1.0+Q_vec[k]);
         } // it
     } // k
 
     // integrate from the top back down to get dry pressure and density.
     Pd_vec[kmax] = Pm_vec[kmax];
-#if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
-    Q = Q_vec[kmax];
-#else
-    Q = 0.0
-#endif
-    Rhod_vec[kmax] = getRhogivenThetaPress(Theta_vec[kmax], Pd_vec[kmax], rdOcp, Q_vec[kmax]);
+    Rhod_vec[kmax] = getRhogivenThetaPress(Theta_vec[kmax], Pd_vec[kmax], l_rdOcp, Q_vec[kmax]);
     for (int k=kmax-1; k>=0; k--) {
         amrex::Real dz = z_vec[k+1]-z_vec[k];
         Rhod_vec[k] = Rhod_vec[k+1]; // an initial guess.
         for (int it=0; it < maxiter; it++) {
             Pd_vec[k] = Pd_vec[k+1]+0.5*dz*(Rhod_vec[k]+Rhod_vec[k+1])*CONST_GRAV;
             if (Pd_vec[k] < 0.0) Pd_vec[k] = 0.0;
-#if defined(ERF_USE_MOISTURE) || defined(ERF_USE_WARM_NO_PRECIP)
-            Q = Q_vec[k];
-#else
-            Q = 0.0
-#endif
-            Rhod_vec[k] = getRhogivenThetaPress(Theta_vec[k], Pd_vec[k], rdOcp, Q);
+            Rhod_vec[k] = getRhogivenThetaPress(Theta_vec[k], Pd_vec[k], l_rdOcp, Q_vec[k]);
         } // it
     } // k
 }
