@@ -479,7 +479,10 @@ ERF::init_from_metgrid (int lev)
             auto xhi_arr = bdy_data_xhi[it][ivar].array();
             auto ylo_arr = bdy_data_ylo[it][ivar].array();
             auto yhi_arr = bdy_data_yhi[it][ivar].array();
-            const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[it][ivar].const_array();
+//            const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[it][ivar].const_array();
+
+            // TODO: stationary boundary conditions, remove or comment when not needed for debugging.
+            const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[0][ivar].const_array();
 
             if (ivar == MetGridBdyVars::U) {
                 xlo_plane = xlo_plane_x_stag; xhi_plane = xhi_plane_x_stag;
@@ -675,12 +678,12 @@ init_state_from_metgrid (const bool use_moisture,
 
 // ---------------------------------------------------------------------------------------
 // DJW: remove this after debugging is complete. This enforces quiescent conditions..
-        if (it == 0) {
-            x_vel_fab.template setVal<RunOn::Device>(0.0);
-            y_vel_fab.template setVal<RunOn::Device>(0.0);
-        }
-        fabs_for_bcs[it][MetGridBdyVars::U].template setVal<RunOn::Device>(0.0);
-        fabs_for_bcs[it][MetGridBdyVars::V].template setVal<RunOn::Device>(0.0);
+//        if (it == 0) {
+//            x_vel_fab.template setVal<RunOn::Device>(0.0);
+//            y_vel_fab.template setVal<RunOn::Device>(0.0);
+//        }
+//        fabs_for_bcs[it][MetGridBdyVars::U].template setVal<RunOn::Device>(0.0);
+//        fabs_for_bcs[it][MetGridBdyVars::V].template setVal<RunOn::Device>(0.0);
 // ---------------------------------------------------------------------------------------
 
         // ********************************************************
@@ -782,12 +785,12 @@ init_state_from_metgrid (const bool use_moisture,
         }
 
         // TODO: TEMPORARY CODE TO RUN QUIESCENT, REMOVE WHEN NOT NEEDED.
-//        if (it == 0) {
-//            x_vel_fab.template setVal<RunOn::Device>(0.0); // TODO: temporary code to initialize with quiescent atmosphere.
-//            y_vel_fab.template setVal<RunOn::Device>(0.0); // TODO: temporary code to initialize with quiescent atmosphere.
-//        }
-//        fabs_for_bcs[it][MetGridBdyVars::U].template setVal<RunOn::Device>(0.0); // TODO: temporary code to force with quiescent atmosphere.
-//        fabs_for_bcs[it][MetGridBdyVars::V].template setVal<RunOn::Device>(0.0); // TODO: temporary code to force with quiescent atmosphere.
+        if (it == 0) {
+            x_vel_fab.template setVal<RunOn::Device>(0.0); // TODO: temporary code to initialize with quiescent atmosphere.
+            y_vel_fab.template setVal<RunOn::Device>(0.0); // TODO: temporary code to initialize with quiescent atmosphere.
+        }
+        fabs_for_bcs[it][MetGridBdyVars::U].template setVal<RunOn::Device>(0.0); // TODO: temporary code to force with quiescent atmosphere.
+        fabs_for_bcs[it][MetGridBdyVars::V].template setVal<RunOn::Device>(0.0); // TODO: temporary code to force with quiescent atmosphere.
 
     } // it
 }
@@ -863,29 +866,35 @@ init_base_state_from_metgrid (const bool use_moisture,
                 Q_vec[k] = (use_moisture) ? new_data(i,j,k,RhoQ_comp) : 0.0;
             }
             z_vec[kmax+1] =  new_z(i,j,kmax+1);
+            if ((i == 40) && (j == 40)) {
+                for (int k=0; k<=kmax; k++) {
+                    Print() << " z_vec[" << k << "] = " << z_vec[k] << std::endl;
+                }
+            }
 
             calc_rho_p(l_rdOcp,kmax,flag_psfc_vec[0],orig_psfc(i,j,0),Theta_vec,
                        Q_vec,z_vec,Rhod_vec,Rhom_vec,Pd_vec,Pm_vec);
 
             for (int k=0; k<=kmax; k++) {
                 p_hse_arr(i,j,k) = Pd_vec[k];
-                r_hse_arr(i,j,k) = Rhom_vec[k];
+                r_hse_arr(i,j,k) = Rhod_vec[k];
             }
         });
 
         ParallelFor(valid_bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
-            new_data(i,j,k,Rho_comp) = r_hse_arr(i,j,k);
             new_data(i,j,k,RhoScalar_comp) = 0.0;
             // RhoTheta and RhoQ1 or RhoQv currently hold Theta and Q1 or Qv. Multiply by Rho.
+            new_data(i,j,k,Rho_comp) = r_hse_arr(i,j,k);
             Real RhoTheta = r_hse_arr(i,j,k)*new_data(i,j,k,RhoTheta_comp);
             new_data(i,j,k,RhoTheta_comp) = RhoTheta;
             if (use_moisture){
                 Real RhoQ = r_hse_arr(i,j,k)*new_data(i,j,k,RhoQ_comp);
                 new_data(i,j,k,RhoQ_comp) = RhoQ;
             }
-            pi_hse_arr(i,j,k) = getExnergivenP(p_hse_arr(i,j,k), l_rdOcp);
-            //pi_hse_arr(i,j,k) = getExnergivenRTh(RhoTheta, l_rdOcp);
+//            p_hse_arr(i,j,k) = getPgivenRTh(RhoTheta);
+            //pi_hse_arr(i,j,k) = getExnergivenP(p_hse_arr(i,j,k), l_rdOcp);
+            pi_hse_arr(i,j,k) = getExnergivenRTh(RhoTheta, l_rdOcp);
         });
     }
 
@@ -926,10 +935,11 @@ init_base_state_from_metgrid (const bool use_moisture,
 
             for (int k=0; k<=kmax; k++) {
                 p_hse_arr(i,j,k) = Pd_vec[k];
+//                p_hse_arr(i,j,k) = getPgivenRTh(Rhod_vec[k]*Theta_vec[k]);
                 if (mask_c_arr(i,j,k)) {
-                    r_hse_arr(i,j,k) = Rhom_vec[k];
-                    if (use_moisture) Q_arr(i,j,k) = Rhom_vec[k]*Q_vec[k];
-                    Theta_arr(i,j,k) = Rhom_vec[k]*Theta_vec[k];
+                    r_hse_arr(i,j,k) = Rhod_vec[k];
+                    if (use_moisture) Q_arr(i,j,k) = Rhod_vec[k]*Q_vec[k];
+                    Theta_arr(i,j,k) = Rhod_vec[k]*Theta_vec[k];
                   }
             } // k
         });

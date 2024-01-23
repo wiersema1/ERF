@@ -122,30 +122,36 @@ calc_rho_p (const amrex::Real& l_rdOcp,
     }
 
     // calculate moist density at the surface.
-    Rhom_vec[0] = getRhogivenThetaPress(Theta_vec[0], Pm_vec[0], l_rdOcp, Q_vec[0])*(1.0+Q_vec[0]);
+//    Rhom_vec[0] = getRhogivenThetaPress(Theta_vec[0], Pm_vec[0], l_rdOcp, Q_vec[0])*(1.0+Q_vec[0]);
+    Rhom_vec[0] = 1.0/(R_d/p_0*Theta_vec[0]*(1.0+(R_v/R_d)*Q_vec[0])*std::pow(Pm_vec[0]/p_0, -iGamma));
 
     // integrate from the surface to the top boundary.
     for (int k=1; k<=kmax; k++) {
+        amrex::Real qvf = 1.0+(R_v/R_d)*Q_vec[k];
         amrex::Real dz = z_vec[k]-z_vec[k-1];
         Rhom_vec[k] = Rhom_vec[k-1]; // an initial guess.
         for (int it=0; it<maxiter; it++) {
             Pm_vec[k] = Pm_vec[k-1]-0.5*dz*(Rhom_vec[k]+Rhom_vec[k-1])*CONST_GRAV;
             if (Pm_vec[k] < 0.0) Pm_vec[k] = 0.0;
-            Rhom_vec[k] = getRhogivenThetaPress(Theta_vec[k], Pm_vec[k], l_rdOcp, Q_vec[k])*(1.0+Q_vec[k]);
+//            Rhom_vec[k] = getRhogivenThetaPress(Theta_vec[k], Pm_vec[k], l_rdOcp, Q_vec[k])*(1.0+Q_vec[k]);
+            Rhom_vec[k] = 1.0/(R_d/p_0*Theta_vec[k]*qvf*std::pow(Pm_vec[k]/p_0, -iGamma));
         } // it
     } // k
 
     // integrate from the top back down to get dry pressure and density.
     Pd_vec[kmax] = Pm_vec[kmax];
-    Rhod_vec[kmax] = getRhogivenThetaPress(Theta_vec[kmax], Pd_vec[kmax], l_rdOcp, Q_vec[kmax]);
+//    Rhod_vec[kmax] = getRhogivenThetaPress(Theta_vec[kmax], Pd_vec[kmax], l_rdOcp, Q_vec[kmax]);
+    Rhod_vec[kmax] = 1.0/(R_d/p_0*Theta_vec[kmax]*std::pow(Pd_vec[kmax]/p_0, -iGamma));
     for (int k=kmax-1; k>=0; k--) {
         amrex::Real dz = z_vec[k+1]-z_vec[k];
         Rhod_vec[k] = Rhod_vec[k+1]; // an initial guess.
         for (int it=0; it < maxiter; it++) {
             Pd_vec[k] = Pd_vec[k+1]+0.5*dz*(Rhod_vec[k]+Rhod_vec[k+1])*CONST_GRAV;
             if (Pd_vec[k] < 0.0) Pd_vec[k] = 0.0;
-            Rhod_vec[k] = getRhogivenThetaPress(Theta_vec[k], Pd_vec[k], l_rdOcp, Q_vec[k]);
+//            Rhod_vec[k] = getRhogivenThetaPress(Theta_vec[k], Pd_vec[k], l_rdOcp, Q_vec[k]);
+            Rhod_vec[k] = 1.0/(R_d/p_0*Theta_vec[k]*std::pow(Pd_vec[k]/p_0, -iGamma));
         } // it
+        Pd_vec[k] = getPgivenRTh(Rhod_vec[k]*Theta_vec[k]);
     } // k
 }
 
