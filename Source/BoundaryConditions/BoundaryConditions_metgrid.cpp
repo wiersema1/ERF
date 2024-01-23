@@ -70,7 +70,8 @@ ERF::fill_from_metgrid (const Vector<MultiFab*>& mfs,
         // Loop over each component
         for (int comp_idx(offset); comp_idx < (comp_var[var_idx]+offset); ++comp_idx)
         {
-            int width = metgrid_bdy_set_width;
+            int width = metgrid_bdy_width;
+            int set_width = metgrid_bdy_set_width;
 
             // Variable can be read from met_em files
             //------------------------------------
@@ -100,8 +101,6 @@ ERF::fill_from_metgrid (const Vector<MultiFab*>& mfs,
                     // Grown tilebox so we fill exterior ghost cells as well
                     Box gbx = mfi.growntilebox(ng_vect);
                     const Array4<Real>& dest_arr = mf.array(mfi);
-
-                    // Call w/o interior ghost cells
                     Box bx_xlo, bx_xhi, bx_ylo, bx_yhi;
                     compute_interior_ghost_bxs_xy(gbx, domain, width, 0,
                                                   bx_xlo, bx_xhi,
@@ -159,7 +158,7 @@ ERF::fill_from_metgrid (const Vector<MultiFab*>& mfs,
                     Box bx_xlo, bx_xhi, bx_ylo, bx_yhi;
                     compute_interior_ghost_bxs_xy(gbx, domain, width, 0,
                                                   bx_xlo, bx_xhi,
-                                                  bx_ylo, bx_yhi, ng_vect);
+                                                  bx_ylo, bx_yhi, ng_vect, true);
 
                     // x-faces (includes y ghost cells)
                     ParallelFor(bx_xlo, bx_xhi,
