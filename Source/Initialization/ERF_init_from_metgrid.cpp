@@ -249,6 +249,8 @@ ERF::init_from_metgrid (int lev)
     if (use_moisture) MetGridBdyEnd = MetGridBdyVars::NumTypes;
 
     // Zero out fabs_for_bcs on the global domain
+    Print() << "zero out fabs_for_bcs" << std::endl;
+    Print() << "ntimes = " << ntimes << std::endl;
     Vector<Vector<FArrayBox>> fabs_for_bcs;
     fabs_for_bcs.resize(ntimes);
     for (int it(0); it < ntimes; it++) {
@@ -257,6 +259,7 @@ ERF::init_from_metgrid (int lev)
         Box gdomain;
         Box ldomain;
         for (int nvar(0); nvar<MetGridBdyEnd; ++nvar) {
+            Print() << "it=" << it << "\t  nvar=" << nvar << std::endl;
             if (nvar==MetGridBdyVars::U) {
                 ldomain = geom[lev].Domain();
                 ldomain.convert(IntVect(1,0,0));
@@ -272,6 +275,7 @@ ERF::init_from_metgrid (int lev)
                 auto ng = lev_new[Vars::cons].nGrowVect();
                 gdomain = grow(ldomain,ng);
             }
+            Print() << "\t  gdomain = " << gdomain << std::endl;
             fabs_for_bcs[it][nvar].resize(gdomain, 1, Arena_Used);
             fabs_for_bcs[it][nvar].template setVal<RunOn::Device>(0.0);
         }
@@ -281,6 +285,7 @@ ERF::init_from_metgrid (int lev)
     // We will recalculate pressure from z, qv, and theta, but the origin model pressure will be
     // necessary if we interpolate temperature (instead of theta) because we'll need pressure to
     // calculate theta.
+    Print() << "p_interp_fab and t_interp_fab" << std::endl;
     Vector<FArrayBox> p_interp_fab;
     Vector<FArrayBox> t_interp_fab;
     p_interp_fab.resize(ntimes);
@@ -292,22 +297,6 @@ ERF::init_from_metgrid (int lev)
         t_interp_fab[it].resize(ldomain, 1, Arena_Used);
         t_interp_fab[it].template setVal<RunOn::Device>(0.0);
     }
-
-    // Vertical interpolation and quality control routines operate on a single
-    // column at a time. We know the maximum number of potential vertical
-    // levels, but not the number that will pass quality control. Vectors and
-    // resizing do not seem to play well with HIP, so these workspaces are
-    // convenient containers for quality controlled data. There is likely a
-    // good amount of possible optimization to this implementation.
-    const BoxArray& bac = lev_new[Vars::cons].boxArray();
-    const BoxArray& bau = lev_new[IntVars::xmom].boxArray();
-    const BoxArray& bav = lev_new[IntVars::ymom].boxArray();
-    const DistributionMapping& dmc = lev_new[Vars::cons].DistributionMap();
-    const DistributionMapping& dmu = lev_new[IntVars::xmom].DistributionMap();
-    const DistributionMapping& dmv = lev_new[IntVars::ymom].DistributionMap();
-    MultiFab workspace_m(bac, dmc, 1, 0);
-    MultiFab workspace_u(bau, dmu, 1, 0);
-    MultiFab workspace_v(bav, dmv, 1, 0);
 
     const Real l_rdOcp = solverChoice.rdOcp;
     std::unique_ptr<iMultiFab> mask_c = OwnerMask(lev_new[Vars::cons], geom[lev].periodicity());//, lev_new[Vars::cons].nGrowVect());
@@ -327,10 +316,6 @@ ERF::init_from_metgrid (int lev)
         FArrayBox &yvel_fab = lev_new[Vars::yvel][mfi];
         FArrayBox &zvel_fab = lev_new[Vars::zvel][mfi];
         FArrayBox &z_phys_cc_fab = (*z_phys_cc[lev])[mfi];
-
-        const Array4<Real>& workspace_m_arr = workspace_m[mfi].array();
-        const Array4<Real>& workspace_u_arr = workspace_u[mfi].array();
-        const Array4<Real>& workspace_v_arr = workspace_v[mfi].array();
 
         const Array4<const int>& mask_c_arr = mask_c->const_array(mfi);
         const Array4<const int>& mask_u_arr = mask_u->const_array(mfi);
@@ -355,8 +340,7 @@ ERF::init_from_metgrid (int lev)
                                 NC_yvel_fab, NC_temp_fab, NC_rhum_fab,
                                 NC_pres_fab, p_interp_fab, t_interp_fab,
                                 theta_fab, mxrat_fab,
-                                fabs_for_bcs, mask_c_arr, mask_u_arr, mask_v_arr,
-                                workspace_m_arr, workspace_u_arr, workspace_v_arr);
+                                fabs_for_bcs, mask_c_arr, mask_u_arr, mask_v_arr);
     } // mf
 
 
@@ -386,8 +370,6 @@ ERF::init_from_metgrid (int lev)
         FArrayBox&      cons_fab = lev_new[Vars::cons][mfi];
         FArrayBox& z_phys_nd_fab = (*z_phys)[mfi];
 
-        const Array4<const int>& mask_c_arr = mask_c->const_array(mfi);
-
         // Fill base state data using origin data (initialization and BC arrays)
         //     p_hse     calculate moist hydrostatic pressure
         //     r_hse     calculate moist hydrostatic density
@@ -398,7 +380,7 @@ ERF::init_from_metgrid (int lev)
                                      flag_psfc,
                                      cons_fab, r_hse_fab, p_hse_fab, pi_hse_fab,
                                      z_phys_nd_fab, NC_ght_fab, NC_psfc_fab,
-                                     fabs_for_bcs, mask_c_arr);
+                                     fabs_for_bcs);
     } // mf
 
     // FillBoundary to populate the internal halo cells
@@ -479,11 +461,6 @@ ERF::init_from_metgrid (int lev)
                 bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_y_stag, 1));
                 bdy_data_ylo[it].push_back(FArrayBox(ylo_plane_y_stag, 1));
                 bdy_data_yhi[it].push_back(FArrayBox(yhi_plane_y_stag, 1));
-            } else if (ivar == MetGridBdyVars::R) {
-                bdy_data_xlo[it].push_back(FArrayBox(xlo_plane_no_stag, 1));
-                bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_no_stag, 1));
-                bdy_data_ylo[it].push_back(FArrayBox(ylo_plane_no_stag, 1));
-                bdy_data_yhi[it].push_back(FArrayBox(yhi_plane_no_stag, 1));
             } else if (ivar == MetGridBdyVars::T) {
                 bdy_data_xlo[it].push_back(FArrayBox(xlo_plane_no_stag, 1));
                 bdy_data_xhi[it].push_back(FArrayBox(xhi_plane_no_stag, 1));
@@ -524,9 +501,6 @@ ERF::init_from_metgrid (int lev)
             } else if (ivar == MetGridBdyVars::V) {
                 xlo_plane = xlo_plane_y_stag; xhi_plane = xhi_plane_y_stag;
                 ylo_plane = ylo_plane_y_stag; yhi_plane = yhi_plane_y_stag;
-            } else if (ivar == MetGridBdyVars::R) {
-                xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
-                ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
             } else if (ivar == MetGridBdyVars::T) {
                 xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
                 ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
@@ -538,22 +512,22 @@ ERF::init_from_metgrid (int lev)
             // west boundary
             ParallelFor(xlo_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
             {
-                xlo_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k);
+                xlo_arr(i,j,k,0) = fabs_for_bcs_arr(i,j,k);
             });
             // xvel at east boundary
             ParallelFor(xhi_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
             {
-                xhi_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k);
+                xhi_arr(i,j,k,0) = fabs_for_bcs_arr(i,j,k);
             });
             // xvel at south boundary
             ParallelFor(ylo_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
             {
-                ylo_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k);
+                ylo_arr(i,j,k,0) = fabs_for_bcs_arr(i,j,k);
             });
             // xvel at north boundary
             ParallelFor(yhi_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
             {
-                yhi_arr(i,j,k,0)   = fabs_for_bcs_arr(i,j,k);
+                yhi_arr(i,j,k,0) = fabs_for_bcs_arr(i,j,k);
             });
 
         } // ivar
@@ -639,9 +613,6 @@ init_terrain_from_metgrid (FArrayBox& z_phys_nd_fab,
  * @param mask_c_arr
  * @param mask_u_arr
  * @param mask_v_arr
- * @param workspace_c_arr
- * @param workspace_u_arr
- * @param workspace_v_arr
  */
 void
 init_state_from_metgrid (const bool use_moisture,
@@ -679,10 +650,7 @@ init_state_from_metgrid (const bool use_moisture,
                          Vector<Vector<FArrayBox>>& fabs_for_bcs,
                          const Array4<const int>& mask_c_arr,
                          const Array4<const int>& mask_u_arr,
-                         const Array4<const int>& mask_v_arr,
-                         const Array4<Real>& workspace_c_arr,
-                         const Array4<Real>& workspace_u_arr,
-                         const Array4<Real>& workspace_v_arr)
+                         const Array4<const int>& mask_v_arr)
 {
     bool metgrid_exp_interp = false; // interpolate w.r.t. exp(z) for non-pressure variables.
 
@@ -1035,8 +1003,7 @@ init_base_state_from_metgrid (const bool use_moisture,
                               FArrayBox& z_phys_cc_fab,
                               const Vector<FArrayBox>& NC_ght_fab,
                               const Vector<FArrayBox>& NC_psfc_fab,
-                              Vector<Vector<FArrayBox>>& fabs_for_bcs,
-                              const Array4<const int>& mask_c_arr)
+                              Vector<Vector<FArrayBox>>& fabs_for_bcs)
 {
     int RhoQ_comp = RhoQ1_comp;
     int kmax = ubound(valid_bx).z;
@@ -1195,7 +1162,6 @@ init_base_state_from_metgrid (const bool use_moisture,
         valid_bx2d.setRange(2,0);
         auto const orig_psfc = NC_psfc_fab[it].const_array();
         auto const     new_z = z_phys_cc_fab.const_array();
-        auto           r_arr = fabs_for_bcs[it][MetGridBdyVars::R].array();
         auto       Theta_arr = fabs_for_bcs[it][MetGridBdyVars::T].array();
         auto           Q_arr = (use_moisture ) ? fabs_for_bcs[it][MetGridBdyVars::QV].array() : Array4<Real>{};
         auto       p_hse_arr = p_hse_bcs_fab.array();
@@ -1214,14 +1180,8 @@ init_base_state_from_metgrid (const bool use_moisture,
                        grav, Thetad_vec, Thetam_vec, Q_vec, z_vec,
                        Rhom_vec, Pm_vec);
 
-            // Multiply by Rho to get conserved vars
             for (int k=0; k<=kmax; k++) {
                 p_hse_arr(i,j,k) = Pm_vec[k];
-                if (mask_c_arr(i,j,k)) {
-                    r_arr(i,j,k) = Rhom_vec[k];
-                    if (use_moisture) Q_arr(i,j,k) = Rhom_vec[k]*Q_vec[k];
-                    Theta_arr(i,j,k) = Rhom_vec[k]*Thetad_vec[k];
-                  }
             } // k
         });
     } // it

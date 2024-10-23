@@ -129,10 +129,10 @@ ERF::init_stuff (int lev, const BoxArray& ba, const DistributionMapping& dm,
     lev_new[Vars::zvel].define(convert(ba, IntVect(0,0,1)), dm, 1, ngrow_vels);
     lev_old[Vars::zvel].define(convert(ba, IntVect(0,0,1)), dm, 1, ngrow_vels);
 
-#ifdef ERF_USE_POISSON_SOLVE
-    pp_inc[lev].define(ba, dm, 1, 1);
-    pp_inc[lev].setVal(0.0);
-#endif
+    if (solverChoice.anelastic[lev] == 1) {
+        pp_inc[lev].define(ba, dm, 1, 1);
+        pp_inc[lev].setVal(0.0);
+    }
 
     // ********************************************************************************************
     // These are just used for scratch in the time integrator but we might as well define them here
@@ -235,6 +235,9 @@ ERF::init_stuff (int lev, const BoxArray& ba, const DistributionMapping& dm,
     if (solverChoice.windfarm_type == WindFarmType::SimpleAD) {
         vars_windfarm[lev].define(ba, dm, 2, ngrow_state);// dudt, dvdt
     }
+    if (solverChoice.windfarm_type == WindFarmType::GeneralAD) {
+        vars_windfarm[lev].define(ba, dm, 2, ngrow_state);// dudt, dvdt
+    }
         Nturb[lev].define(ba, dm, 1, ngrow_state); // Number of turbines in a cell
         SMark[lev].define(ba, dm, 2, ngrow_state); // Free stream velocity/source term
                                                    // sampling marker in a cell - 2 components
@@ -310,8 +313,8 @@ ERF::init_stuff (int lev, const BoxArray& ba, const DistributionMapping& dm,
     // Turbulent perturbation region initialization
     //*********************************************************
     // TODO: Test perturbation on multiple levels
-    if (solverChoice.pert_type == PerturbationType::perturbSource ||
-        solverChoice.pert_type == PerturbationType::perturbDirect)
+    if (solverChoice.pert_type == PerturbationType::Source ||
+        solverChoice.pert_type == PerturbationType::Direct)
     {
         if (lev == 0) {
             turbPert.init_tpi(lev, geom[lev].Domain().bigEnd(), geom[lev].CellSizeArray(), ba, dm, ngrow_state);
@@ -439,49 +442,36 @@ ERF::init_zphys (int lev, Real time)
 {
     if (solverChoice.use_terrain)
     {
-        if (lev > 0) {
-            //
-            // First interpolate from coarser level if there is one
-            // NOTE: this interpolater assumes that ALL ghost cells of the coarse MultiFab
-            //       have been pre-filled - this includes ghost cells both inside and outside
-            //       the domain
-            //
-            InterpFromCoarseLevel(*z_phys_nd[lev], z_phys_nd[lev]->nGrowVect(),
-                                  IntVect(0,0,0), // do not fill ghost cells outside the domain
-                                  *z_phys_nd[lev-1], 0, 0, 1,
-                                  geom[lev-1], geom[lev],
-                                  refRatio(lev-1), &node_bilinear_interp,
-                                  domain_bcs_type, BCVars::cons_bc);
+        if (init_type != "real" && init_type != "metgrid")
+        {
+            if (lev > 0) {
+                //
+                // First interpolate from coarser level if there is one
+                // NOTE: this interpolater assumes that ALL ghost cells of the coarse MultiFab
+                //       have been pre-filled - this includes ghost cells both inside and outside
+                //       the domain
+                //
+                InterpFromCoarseLevel(*z_phys_nd[lev], z_phys_nd[lev]->nGrowVect(),
+                                      IntVect(0,0,0), // do not fill ghost cells outside the domain
+                                      *z_phys_nd[lev-1], 0, 0, 1,
+                                      geom[lev-1], geom[lev],
+                                      refRatio(lev-1), &node_bilinear_interp,
+                                      domain_bcs_type, BCVars::cons_bc);
+            }
 
-            // This recomputes the fine values using the bottom terrain at the fine resolution,
-            //    and also fills values of z_phys_nd outside the domain
+            z_phys_nd[lev]->setVal(-1.e23);
+            prob->init_custom_terrain(geom[lev],*z_phys_nd[lev],time);
             init_terrain_grid(lev,geom[lev],*z_phys_nd[lev],zlevels_stag[lev],phys_bc_type);
-        }
 
-        //
-        // NOTE: we are NOT currently doing this as described -- we will simply use
-        //       the interpolation from coarse done above
-        // Then, if not using real/metgrid data,
-        // 1) redefine the terrain at k=0 for every fine box which includes k=0
-        // 2) recreate z_phys_nd at every fine node using
-        // the data at the bottom of each fine grid
-        // which has been either been interpolated from the coarse grid (k>0)
-        // or set in init_custom_terrain (k=0)
-        //
-        if (lev == 0) {
-            if (init_type != "real" && init_type != "metgrid")
-            {
-                z_phys_nd[lev]->setVal(-1.e23);
-                prob->init_custom_terrain(geom[lev],*z_phys_nd[lev],time);
-                init_terrain_grid(lev,geom[lev],*z_phys_nd[lev],zlevels_stag[lev],phys_bc_type);
-
+            if (lev == 0) {
                 Real zmax = z_phys_nd[0]->max(0,0,false);
                 Real rel_diff = (zmax - zlevels_stag[0][zlevels_stag[0].size()-1]) / zmax;
                 AMREX_ALWAYS_ASSERT_WITH_MESSAGE(rel_diff < 1.e-8, "Terrain is taller than domain top!");
+            } // lev == 0
 
-            } // init_type
             z_phys_nd[lev]->FillBoundary(geom[lev].periodicity());
-        } // lev == 0
+
+        } // init_type
     } // terrain
 }
 
@@ -538,23 +528,17 @@ ERF::initialize_integrator (int lev, MultiFab& cons_mf, MultiFab& vel_mf)
     int_state.push_back(MultiFab(convert(ba,IntVect(0,0,1)), dm, 1, vel_mf.nGrow())); // zmom
 
     mri_integrator_mem[lev] = std::make_unique<MRISplitIntegrator<Vector<MultiFab> > >(int_state);
-    mri_integrator_mem[lev]->setNoSubstepping(solverChoice.no_substepping[lev]);
+    mri_integrator_mem[lev]->setNoSubstepping((solverChoice.substepping_type[lev] == SubsteppingType::None));
     mri_integrator_mem[lev]->setAnelastic(solverChoice.anelastic[lev]);
     mri_integrator_mem[lev]->setNcompCons(ncomp_cons);
     mri_integrator_mem[lev]->setForceFirstStageSingleSubstep(solverChoice.force_stage1_single_substep);
 }
 
 void
-ERF::initialize_bcs (int lev)
+ERF::make_physbcs (int lev)
 {
-    // Dirichlet BC data only lives on level 0
-    Real* u_bc_tmp(nullptr);
-    Real* v_bc_tmp(nullptr);
-    Real* w_bc_tmp(nullptr);
-    if (lev==0) {
-        u_bc_tmp = xvel_bc_data.data();
-        v_bc_tmp = yvel_bc_data.data();
-        w_bc_tmp = zvel_bc_data.data();
+    if (solverChoice.use_terrain) {
+        AMREX_ALWAYS_ASSERT(z_phys_nd[lev] != nullptr);
     }
 
     physbcs_cons[lev] = std::make_unique<ERFPhysBCFunct_cons> (lev, geom[lev], domain_bcs_type, domain_bcs_type_d,
@@ -562,16 +546,13 @@ ERF::initialize_bcs (int lev)
                                                                z_phys_nd[lev], use_real_bcs);
     physbcs_u[lev]    = std::make_unique<ERFPhysBCFunct_u> (lev, geom[lev], domain_bcs_type, domain_bcs_type_d,
                                                             m_bc_extdir_vals, m_bc_neumann_vals,
-                                                            z_phys_nd[lev], use_real_bcs, u_bc_tmp);
+                                                            z_phys_nd[lev], use_real_bcs, xvel_bc_data[lev].data());
     physbcs_v[lev]    = std::make_unique<ERFPhysBCFunct_v> (lev, geom[lev], domain_bcs_type, domain_bcs_type_d,
                                                             m_bc_extdir_vals, m_bc_neumann_vals,
-                                                            z_phys_nd[lev], use_real_bcs, v_bc_tmp);
+                                                            z_phys_nd[lev], use_real_bcs, yvel_bc_data[lev].data());
     physbcs_w[lev]    = std::make_unique<ERFPhysBCFunct_w> (lev, geom[lev], domain_bcs_type, domain_bcs_type_d,
                                                             m_bc_extdir_vals, m_bc_neumann_vals,
                                                             solverChoice.terrain_type, z_phys_nd[lev],
-                                                            use_real_bcs, w_bc_tmp);
-    physbcs_w_no_terrain[lev]    = std::make_unique<ERFPhysBCFunct_w_no_terrain>
-                                                           (lev, geom[lev], domain_bcs_type, domain_bcs_type_d,
-                                                            m_bc_extdir_vals, m_bc_neumann_vals, use_real_bcs,
-                                                            w_bc_tmp);
+                                                            use_real_bcs, zvel_bc_data[lev].data());
+    physbcs_base[lev] = std::make_unique<ERFPhysBCFunct_base> (lev, geom[lev], domain_bcs_type, domain_bcs_type_d);
 }
