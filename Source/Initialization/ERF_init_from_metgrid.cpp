@@ -24,8 +24,6 @@ ERF::init_from_metgrid (int lev)
     }
 #endif
 
-    bool interp_theta = false;
-
     int ntimes = num_files_at_level[lev];
 
     if (nc_init_file.empty())
@@ -327,7 +325,7 @@ ERF::init_from_metgrid (int lev)
         //     z_vel   set to 0.0
         //     theta   calculate on origin levels then interpolate
         //     mxrat   convert RH -> Q on origin levels then interpolate
-        init_state_from_metgrid(use_moisture, interp_theta, metgrid_debug_quiescent,
+        init_state_from_metgrid(use_moisture, metgrid_interp_theta, metgrid_debug_quiescent,
                                 metgrid_debug_isothermal, metgrid_debug_dry,
                                 metgrid_basic_linear,
                                 metgrid_use_below_sfc, metgrid_use_sfc,
@@ -580,7 +578,7 @@ init_terrain_from_metgrid (FArrayBox& z_phys_nd_fab,
  * Helper function to initialize state and velocity data read from metgrid data.
  *
  * @param use_moisture bool True if solverChoice.moisture_type != MoistureType::None
- * @param interp_theta bool calculate theta on origin levels, then interpolate
+ * @param metgrid_interp_theta bool calculate theta on origin levels, then interpolate
  * @param metgrid_debug_quiescent bool overwrite u and v with 0.0
  * @param metgrid_debug_isothermal bool overwrite theta with 300.0
  * @param metgrid_debug_dry bool overwrite qv with 0.0
@@ -616,7 +614,7 @@ init_terrain_from_metgrid (FArrayBox& z_phys_nd_fab,
  */
 void
 init_state_from_metgrid (const bool use_moisture,
-                         const bool interp_theta,
+                         const bool metgrid_interp_theta,
                          const bool metgrid_debug_quiescent,
                          const bool metgrid_debug_isothermal,
                          const bool metgrid_debug_dry,
@@ -693,8 +691,8 @@ init_state_from_metgrid (const bool use_moisture,
             }
             if (metgrid_debug_quiescent) { // Debugging option to run quiescent.
                 for (int k = 0; k<=kmax; k++) {
-                    if (mask_u_arr(i,j,k)) bc_data(i,j,k,0) = 60.0*it;
-                    if (it==0) new_data(i,j,k,0) = 60.0*it;
+                    if (mask_u_arr(i,j,k)) bc_data(i,j,k,0) = 0.0;
+                    if (it==0) new_data(i,j,k,0) = 0.0;
                 }
             }
         });
@@ -767,7 +765,7 @@ init_state_from_metgrid (const bool use_moisture,
         // ********************************************************
         // theta
         // ********************************************************
-        if (interp_theta) {
+        if (metgrid_interp_theta) {
             // Calculate potential temperature on the origin model vertical levels
             // then interpolate that onto the ERF vertical levels.
 
@@ -821,7 +819,7 @@ init_state_from_metgrid (const bool use_moisture,
             });
             }
 
-        } else { // interp_theta == false
+        } else { // metgrid_interp_theta == false
 
             { // vertical interpolation of pressure.
 #ifndef AMREX_USE_GPU
@@ -905,7 +903,7 @@ init_state_from_metgrid (const bool use_moisture,
             });
             }
 
-        } // interp_theta
+        } // metgrid_interp_theta
 
         if (use_moisture) {
             // ********************************************************

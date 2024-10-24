@@ -1500,6 +1500,7 @@ ERF::ReadParameters ()
         pp.query("metgrid_debug_dry",        metgrid_debug_dry);
         pp.query("metgrid_debug_psfc",       metgrid_debug_psfc);
         pp.query("metgrid_debug_msf",        metgrid_debug_msf);
+        pp.query("metgrid_interp_theta",     metgrid_interp_theta);
         pp.query("metgrid_basic_linear",     metgrid_basic_linear);
         pp.query("metgrid_use_below_sfc",    metgrid_use_below_sfc);
         pp.query("metgrid_use_sfc",          metgrid_use_sfc);

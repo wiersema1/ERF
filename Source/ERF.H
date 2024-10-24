@@ -987,6 +987,7 @@ private:
     bool        metgrid_debug_dry{false};
     bool        metgrid_debug_psfc{false};
     bool        metgrid_debug_msf{false};
+    bool        metgrid_interp_theta{false};
     bool        metgrid_basic_linear{false};
     bool        metgrid_use_below_sfc{true};
     bool        metgrid_use_sfc{true};

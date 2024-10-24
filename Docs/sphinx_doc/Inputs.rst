@@ -1138,6 +1138,46 @@ List of Parameters
 |                                  | use_real_bcs is   |                    |                  |
 |                                  | true              |                    |                  |
 +----------------------------------+-------------------+--------------------+------------------+
+| **erf.metgrid_debug_quiescent**  | If init_type is   | true or false      | false            |
+|                                  | metgrid, overwrite|                    |                  |
+|                                  | initial conditions|                    |                  |
+|                                  | and boundary      |                    |                  |
+|                                  | conditions to be  |                    |                  |
+|                                  | quiescent.        |                    |                  |
++----------------------------------+-------------------+--------------------+------------------+
+| **erf.metgrid_debug_isothermal** | If init_type is   | true or false      | false            |
+|                                  | metgrid, overwrite|                    |                  |
+|                                  | theta to be 300 in|                    |                  |
+|                                  | initial conditions|                    |                  |
+|                                  | and boundary      |                    |                  |
+|                                  | conditions.       |                    |                  |
++----------------------------------+-------------------+--------------------+------------------+
+| **erf.metgrid_debug_dry**        | If init_type is   | true or false      | false            |
+|                                  | metgrid, overwrite|                    |                  |
+|                                  | qv to be dry in   |                    |                  |
+|                                  | initial conditions|                    |                  |
+|                                  | and boundary      |                    |                  |
+|                                  | conditions.       |                    |                  |
++----------------------------------+-------------------+--------------------+------------------+
+| **erf.metgrid_debug_msf**        | If init_type is   | true or false      | false            |
+|                                  | metgrid, overwrite|                    |                  |
+|                                  | map scale factors |                    |                  |
+|                                  | to be 1.          |                    |                  |
++----------------------------------+-------------------+--------------------+------------------+
+| **erf.metgrid_debug_psfc**       | If init_type is   | true or false      | false            |
+|                                  | metgrid, overwrite|                    |                  |
+|                                  | surface pressure  |                    |                  |
+|                                  | to be 10**5.      |                    |                  |
++----------------------------------+-------------------+--------------------+------------------+
+| **erf.metgrid_interp_theta**     | If init_type is   | true or false      | false            |
+|                                  | metgrid, calculate|                    |                  |
+|                                  | theta on origin   |                    |                  |
+|                                  | model vertical    |                    |                  |
+|                                  | levels and then   |                    |                  |
+|                                  | interpolate onto  |                    |                  |
+|                                  | the ERF vertical  |                    |                  |
+|                                  | levels.           |                    |                  |
++----------------------------------+-------------------+--------------------+------------------+
 | **erf.metgrid_basic_linear**     | If init_type is   | true or false      | false            |
 |                                  | metgrid, use      |                    |                  |
 |                                  | linear vertical   |                    |                  |
