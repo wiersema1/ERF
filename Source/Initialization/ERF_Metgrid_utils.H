@@ -75,10 +75,10 @@ init_state_from_metgrid (const bool use_moisture,
                          const amrex::Vector<amrex::FArrayBox>& NC_temp_fab,
                          const amrex::Vector<amrex::FArrayBox>& NC_rhum_fab,
                          const amrex::Vector<amrex::FArrayBox>& NC_pres_fab,
-                         amrex::Vector<amrex::FArrayBox>& p_interp_fab,
-                         amrex::Vector<amrex::FArrayBox>& t_interp_fab,
-                         amrex::Vector<amrex::FArrayBox>& theta_fab,
-                         amrex::Vector<amrex::FArrayBox>& mxrat_fab,
+                         amrex::FArrayBox& p_interp_fab,
+                         amrex::FArrayBox& t_interp_fab,
+                         amrex::FArrayBox& theta_fab,
+                         amrex::FArrayBox& mxrat_fab,
                          amrex::Vector<amrex::Vector<amrex::FArrayBox>>& fabs_for_bcs,
                          const amrex::Array4<const int>& mask_c_arr,
                          const amrex::Array4<const int>& mask_u_arr,
@@ -105,7 +105,6 @@ init_base_state_from_metgrid (const bool use_moisture,
                               amrex::FArrayBox& p_hse_fab,
                               amrex::FArrayBox& pi_hse_fab,
                               amrex::FArrayBox& z_phys_cc_fab,
-                              const amrex::Vector<amrex::FArrayBox>& NC_ght_fab,
                               const amrex::Vector<amrex::FArrayBox>& NC_psfc_fab,
                               amrex::Vector<amrex::Vector<amrex::FArrayBox>>& fabs_for_bcs);
 
@@ -217,8 +216,6 @@ AMREX_GPU_DEVICE
 void
 lagrange_setup (char var_type,
                 const bool& exp_interp,
-                const int& i,
-                const int& j,
                 const int& orig_n,
                 const int& new_n,
                 const int& order,
@@ -628,6 +625,7 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
     }
 
     int ksta, kend;
+    count = 0;
     if (metgrid_use_below_sfc && metgrid_use_sfc) {
         // Use all levels.
         int kord = 0;
@@ -650,7 +648,6 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
             ordered_z(k) = ordered_z(k+1);
             ordered_data(k) = ordered_data(k+1);
         }
-        int count = 0;
         for (int k=0; k < kmax_orig-1; k++) {
             count++;
             if (orig_z(kmax_orig-1) == ordered_z(k)) break;
@@ -661,7 +658,6 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
     } else if (!metgrid_use_below_sfc && metgrid_use_sfc) {
         // Use all levels above and including the surface.
         int kcount = k_above_sfc-1-zap_below;
-        int count = 0;
         for (int k=0; k < kmax_orig; k++) {
             if (ordered_z(kcount) == orig_z(k)) {
                 kcount++;
@@ -712,8 +708,6 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
     // Call the interpolator.
     lagrange_setup(var_type,
                    exp_interp,
-                   i,
-                   j,
                    kend-ksta,
                    kmax_new,
                    metgrid_order,
@@ -729,7 +723,6 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
     if (metgrid_retain_sfc) new_data(0) = ordered_data(0);
 
     // Save the interpolated data.
-//    amrex::Print() << "Saving interpolated data    i=" << i << "    j=" << j << std::endl;
     for (int k=0; k < kmax_new; k++) {
         if ((mask(i,j,k)) && (update_bc_data)) bc_data_full(i,j,k,0) = new_data(k);
         if (it == 0) new_data_full(i,j,k,src_comp) = new_data(k);

@@ -114,17 +114,6 @@ ERF::init_from_metgrid (int lev)
         if (NC_dt != bdy_time_interval) Error("Time interval between consecutive met_em files must be consistent.");
     }
 
-    // Set up a FAB for mixing ratio and another for potential temperature.
-    // Necessary because the input data has relative humidity and temperature, not mixing ratio and potential temperature.
-    // TODO: add alternate pathways for other origin models where different combinations of variables may be present.
-    Vector<FArrayBox> mxrat_fab; mxrat_fab.resize(ntimes);
-    Vector<FArrayBox> theta_fab; theta_fab.resize(ntimes);
-    for (int it = 0; it < ntimes; it++) {
-        Box NC_box_unstag = NC_rhum_fab[it].box();
-        mxrat_fab[it].resize(NC_box_unstag, 1, Arena_Used);
-        theta_fab[it].resize(NC_box_unstag, 1, Arena_Used);
-    }
-
     auto& lev_new = vars_new[lev];
 
     std::unique_ptr<MultiFab>& z_phys = z_phys_nd[lev];
@@ -279,21 +268,25 @@ ERF::init_from_metgrid (int lev)
         }
     }
 
+    // Set up FABs for mixing ratio and potential temperature on the origin model vertical grid.
+    // This is necessary for input data that has relative humidity and temperature, but does not
+    // include mixing ratio and potential temperature.
+    // TODO: add alternate pathways for other origin models where different combinations of variables may be present.
+    Box NC_box_unstag = NC_rhum_fab[0].box();
+    FArrayBox mxrat_fab, theta_fab;
+    mxrat_fab.resize(NC_box_unstag, 1, Arena_Used);
+    theta_fab.resize(NC_box_unstag, 1, Arena_Used);
+
     // Set up FABs to hold interpolated origin variables that are only needed during initialization.
-    // We will recalculate pressure from z, qv, and theta, but the origin model pressure will be
-    // necessary if we interpolate temperature (instead of theta) because we'll need pressure to
-    // calculate theta.
-    Print() << "p_interp_fab and t_interp_fab" << std::endl;
-    Vector<FArrayBox> p_interp_fab;
-    Vector<FArrayBox> t_interp_fab;
-    p_interp_fab.resize(ntimes);
-    t_interp_fab.resize(ntimes);
-    for (int it(0); it < ntimes; it++) {
+    // Pressure will be iteratively calculated from z, qv, and theta, but the origin model pressure
+    // is necessary if metgrid_interp_theta=True and we interpolate temperature instead of theta.
+    FArrayBox p_interp_fab, t_interp_fab;
+    if (!metgrid_interp_theta) {
         Box ldomain = geom[lev].Domain();
-        p_interp_fab[it].resize(ldomain, 1, Arena_Used);
-        p_interp_fab[it].template setVal<RunOn::Device>(0.0);
-        t_interp_fab[it].resize(ldomain, 1, Arena_Used);
-        t_interp_fab[it].template setVal<RunOn::Device>(0.0);
+        p_interp_fab.resize(ldomain, 1, Arena_Used);
+        p_interp_fab.template setVal<RunOn::Device>(0.0);
+        t_interp_fab.resize(ldomain, 1, Arena_Used);
+        t_interp_fab.template setVal<RunOn::Device>(0.0);
     }
 
     const Real l_rdOcp = solverChoice.rdOcp;
@@ -374,11 +367,9 @@ ERF::init_from_metgrid (int lev)
         //     pi_hse    calculate Exner term given pressure
         const Box valid_bx = mfi.validbox();
         init_base_state_from_metgrid(use_moisture, metgrid_debug_psfc, l_rdOcp,
-                                     valid_bx,
-                                     flag_psfc,
+                                     valid_bx, flag_psfc,
                                      cons_fab, r_hse_fab, p_hse_fab, pi_hse_fab,
-                                     z_phys_nd_fab, NC_ght_fab, NC_psfc_fab,
-                                     fabs_for_bcs);
+                                     z_phys_nd_fab, NC_psfc_fab, fabs_for_bcs);
     } // mf
 
     // FillBoundary to populate the internal halo cells
@@ -641,10 +632,10 @@ init_state_from_metgrid (const bool use_moisture,
                          const Vector<FArrayBox>& NC_temp_fab,
                          const Vector<FArrayBox>& NC_rhum_fab,
                          const Vector<FArrayBox>& NC_pres_fab,
-                         Vector<FArrayBox>& p_interp_fab,
-                         Vector<FArrayBox>& t_interp_fab,
-                         Vector<FArrayBox>& theta_fab,
-                         Vector<FArrayBox>& mxrat_fab,
+                         FArrayBox& p_interp_fab,
+                         FArrayBox& t_interp_fab,
+                         FArrayBox& theta_fab,
+                         FArrayBox& mxrat_fab,
                          Vector<Vector<FArrayBox>>& fabs_for_bcs,
                          const Array4<const int>& mask_c_arr,
                          const Array4<const int>& mask_u_arr,
@@ -737,11 +728,6 @@ init_state_from_metgrid (const bool use_moisture,
                     if (it==0) new_data(i,j,k,0) = 0.0; //60.0*it;
                 }
             }
-            if ((i == 40) && (j == 0)) {
-                for (int k = 0; k<=kmax; k++) {
-                    Print() << "V bc_data(" << i << ", " << j << ", " << k << ") = " << bc_data(i,j,k,0) << std::endl;
-                }
-            }
         });
         }
 
@@ -773,7 +759,7 @@ init_state_from_metgrid (const bool use_moisture,
                 Box bx = NC_rhum_fab[it].box() & tbxc;
                 auto const temp  = NC_temp_fab[it].const_array();
                 auto const pres  = NC_pres_fab[it].const_array();
-                auto       theta = theta_fab[it].array();
+                auto       theta = theta_fab.array();
 
                 ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
@@ -787,7 +773,7 @@ init_state_from_metgrid (const bool use_moisture,
 #endif
             Box bx2d = NC_temp_fab[it].box() & tbxc;
             bx2d.setRange(2,0);
-            auto const orig_data = theta_fab[it].const_array();
+            auto const orig_data = theta_fab.const_array();
             auto const orig_z    = NC_ght_fab[it].const_array();
             auto       new_data  = state_fab.array();
             auto       bc_data   = fabs_for_bcs[it][MetGridBdyVars::T].array();
@@ -825,11 +811,11 @@ init_state_from_metgrid (const bool use_moisture,
 #ifndef AMREX_USE_GPU
             Print() << "[init_state_from_metgrid] vertical interpolation of pressure, it = " << it << std::endl;
 #endif
-            Box bx2d = p_interp_fab[it].box() & tbxc;
+            Box bx2d = p_interp_fab.box() & tbxc;
             bx2d.setRange(2,0);
             auto const orig_data = NC_pres_fab[it].const_array();
             auto const orig_z    = NC_ght_fab[it].const_array();
-            auto       new_data  = p_interp_fab[it].array();
+            auto       new_data  = p_interp_fab.array();
             auto const new_z     = z_phys_nd_fab.const_array();
             const amrex::Array4<amrex::Real> bc_data_unused;
 
@@ -858,11 +844,11 @@ init_state_from_metgrid (const bool use_moisture,
 #ifndef AMREX_USE_GPU
             Print() << "[init_state_from_metgrid] vertical interpolation of temperature, it = " << it << std::endl;
 #endif
-            Box bx2d = p_interp_fab[it].box() & tbxc;
+            Box bx2d = p_interp_fab.box() & tbxc;
             bx2d.setRange(2,0);
             auto const orig_data = NC_temp_fab[it].const_array();
             auto const orig_z    = NC_ght_fab[it].const_array();
-            auto       new_data  = t_interp_fab[it].array();
+            auto       new_data  = t_interp_fab.array();
             auto const new_z     = z_phys_nd_fab.const_array();
             const amrex::Array4<amrex::Real> bc_data_unused;
 
@@ -889,8 +875,8 @@ init_state_from_metgrid (const bool use_moisture,
             }
 
             { // calculate potential temperature on the ERF vertical levels.
-            auto const temp  = t_interp_fab[it].const_array();
-            auto const pres  = p_interp_fab[it].const_array();
+            auto const temp  = t_interp_fab.const_array();
+            auto const pres  = p_interp_fab.const_array();
             auto       new_data = state_fab.array();
             auto       bc_data   = fabs_for_bcs[it][MetGridBdyVars::T].array();
 
@@ -919,7 +905,7 @@ init_state_from_metgrid (const bool use_moisture,
                 auto const rhum  = NC_rhum_fab[it].const_array();
                 auto const temp  = NC_temp_fab[it].const_array();
                 auto const pres  = NC_pres_fab[it].const_array();
-                auto       mxrat = mxrat_fab[it].array();
+                auto       mxrat = mxrat_fab.array();
 
                 ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
@@ -933,7 +919,7 @@ init_state_from_metgrid (const bool use_moisture,
 #endif
                 Box bx2d = NC_temp_fab[it].box() & tbxc;
                 bx2d.setRange(2,0);
-                auto const orig_data = mxrat_fab[it].const_array();
+                auto const orig_data = mxrat_fab.const_array();
                 auto const orig_z    = NC_ght_fab[it].const_array();
                 auto       new_data  = state_fab.array();
                 auto       bc_data   = fabs_for_bcs[it][MetGridBdyVars::QV].array();
@@ -983,7 +969,6 @@ init_state_from_metgrid (const bool use_moisture,
  * @param p_hse_fab FArrayBox holding the hydrostatic base state pressure we are initializing
  * @param pi_hse_fab FArrayBox holding the hydrostatic base Exner pressure we are initializing
  * @param z_phys_nd_fab FArrayBox holding nodal z coordinate data for terrain
- * @param NC_ght_fab Vector of FArrayBox objects holding metgrid data for height of cell centers
  * @param NC_psfc_fab Vector of FArrayBox objects holding metgrid data for surface pressure
  * @param fabs_for_bcs Vector of Vector of FArrayBox objects holding MetGridBdyVars at each met_em time.
  * @param mask_c_arr
@@ -999,7 +984,6 @@ init_base_state_from_metgrid (const bool use_moisture,
                               FArrayBox& p_hse_fab,
                               FArrayBox& pi_hse_fab,
                               FArrayBox& z_phys_cc_fab,
-                              const Vector<FArrayBox>& NC_ght_fab,
                               const Vector<FArrayBox>& NC_psfc_fab,
                               Vector<Vector<FArrayBox>>& fabs_for_bcs)
 {
