@@ -101,13 +101,9 @@ ERF::setPlotVariables (const std::string& pp_plot_var_names, Vector<std::string>
                     tmp_plot_names.push_back(derived_names[i]);
                 }
             }
-            if(solverChoice.windfarm_type == WindFarmType::SimpleAD) {
-                if(derived_names[i] == "num_turb" or derived_names[i] == "SMark0" or derived_names[i] == "Smark1") {
-                    tmp_plot_names.push_back(derived_names[i]);
-                }
-            }
-            if(solverChoice.windfarm_type == WindFarmType::GeneralAD) {
-                if(derived_names[i] == "num_turb" or derived_names[i] == "SMark1") {
+            if( solverChoice.windfarm_type == WindFarmType::SimpleAD or
+                solverChoice.windfarm_type == WindFarmType::GeneralAD ) {
+                if(derived_names[i] == "num_turb" or derived_names[i] == "SMark0" or derived_names[i] == "SMark1") {
                     tmp_plot_names.push_back(derived_names[i]);
                 }
             }
@@ -199,6 +195,7 @@ ERF::WritePlotFile (int which, Vector<std::string> plot_var_names)
     // We Fillpatch here because some of the derived quantities require derivatives
     //     which require ghost cells to be filled.  We do not need to call FillPatcher
     //     because we don't need to set interior fine points.
+    // NOTE: the momenta here are only used as scratch space, the momenta themselves are not fillpatched
     for (int lev = 0; lev <= finest_level; ++lev) {
         bool fillset = false;
         FillPatch(lev, t_new[lev], {&vars_new[lev][Vars::cons], &vars_new[lev][Vars::xvel],
@@ -485,8 +482,8 @@ ERF::WritePlotFile (int which, Vector<std::string> plot_var_names)
             mf_comp ++;
         }
 
-        if(containerHasElement(plot_var_names, "SMark0") and
-           solverChoice.windfarm_type == WindFarmType::SimpleAD) {
+        if( containerHasElement(plot_var_names, "SMark0") and
+           (solverChoice.windfarm_type == WindFarmType::SimpleAD or solverChoice.windfarm_type == WindFarmType::GeneralAD) ) {
              for ( MFIter mfi(mf[lev],TilingIfNotGPU()); mfi.isValid(); ++mfi)
             {
                 const Box& bx = mfi.tilebox();
@@ -1511,10 +1508,10 @@ ERF::WriteMultiLevelPlotfileWithTerrain (const std::string& plotfilename, int nl
                                          const Vector<const MultiFab*>& mf,
                                          const Vector<const MultiFab*>& mf_nd,
                                          const Vector<std::string>& varnames,
-                                         const Vector<Geometry>& geom,
+                                         const Vector<Geometry>& my_geom,
                                          Real time,
                                          const Vector<int>& level_steps,
-                                         const Vector<IntVect>& ref_ratio,
+                                         const Vector<IntVect>& rr,
                                          const std::string &versionName,
                                          const std::string &levelPrefix,
                                          const std::string &mfPrefix,
@@ -1523,7 +1520,7 @@ ERF::WriteMultiLevelPlotfileWithTerrain (const std::string& plotfilename, int nl
     BL_PROFILE("WriteMultiLevelPlotfileWithTerrain()");
 
     AMREX_ALWAYS_ASSERT(nlevels <= mf.size());
-    AMREX_ALWAYS_ASSERT(nlevels <= ref_ratio.size()+1);
+    AMREX_ALWAYS_ASSERT(nlevels <= rr.size()+1);
     AMREX_ALWAYS_ASSERT(nlevels <= level_steps.size());
     AMREX_ALWAYS_ASSERT(mf[0]->nComp() == varnames.size());
 
@@ -1553,7 +1550,7 @@ ERF::WriteMultiLevelPlotfileWithTerrain (const std::string& plotfilename, int nl
                                                     std::ofstream::binary);
             if( ! HeaderFile.good()) FileOpenFailed(HeaderFileName);
             WriteGenericPlotfileHeaderWithTerrain(HeaderFile, nlevels, boxArrays, varnames,
-                                                  geom, time, level_steps, ref_ratio, versionName,
+                                                  my_geom, time, level_steps, rr, versionName,
                                                   levelPrefix, mfPrefix);
         };
 

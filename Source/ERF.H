@@ -22,6 +22,10 @@
 #include <AMReX_YAFluxRegister.H>
 #include <AMReX_ErrorList.H>
 
+#ifdef ERF_USE_FFT
+#include <AMReX_FFT_Poisson.H>
+#endif
+
 #ifdef AMREX_MEM_PROFILING
 #include <AMReX_MemProfiler.H>
 #endif
@@ -40,6 +44,7 @@
 #include <ERF_MRI.H>
 #include <ERF_PhysBCFunct.H>
 #include <ERF_FillPatcher.H>
+#include <ERF_SampleData.H>
 
 #ifdef ERF_USE_PARTICLES
 #include "ERF_ParticleData.H"
@@ -65,6 +70,13 @@
 #ifdef ERF_USE_MULTIBLOCK
 class MultiBlockContainer;
 #endif
+
+/**
+ * Enum of possible initialization types
+*/
+AMREX_ENUM(InitType,
+    None, Input_Sounding, Ideal, Real, Metgrid, Uniform
+);
 
 /**
  * Enum of possible coarse/fine interpolation options
@@ -136,8 +148,6 @@ public:
 
     // Project the velocities to be divergence-free -- this is only relevant if anelastic == 1
     void project_velocities (int lev, amrex::Real dt, amrex::Vector<amrex::MultiFab >& vars, amrex::MultiFab& p);
-    void solve_with_heffte  (int lev, amrex::MultiFab& rhs, amrex::MultiFab& soln,
-                             amrex::Array<amrex::MultiFab,AMREX_SPACEDIM>& fluxes);
 
     // Project the velocities to be divergence-free with a thin body
     void project_velocities_tb (int lev, amrex::Real dt, amrex::Vector<amrex::MultiFab >& vars, amrex::MultiFab& p);
@@ -368,12 +378,10 @@ public:
     // Advance a block specified number of time steps
     void Evolve_MB (int MBstep, int max_block_step);
 
-    // Advance a block specified number of time steps
-    void Evolve_MB (MultiBlockContainer* mbc, int MBstep, int max_block_step);
-
-    // get the current time values
-    amrex::Real get_t_old() {return t_old[0];}
-    amrex::Real get_t_new() {return t_new[0];}
+    // get the current time values and dt
+    amrex::Real get_t_old (int lev) { return t_old[lev]; }
+    amrex::Real get_t_new (int lev) { return t_new[lev]; }
+    amrex::Real get_dt    (int lev) { return dt[lev];    }
 
     // Set parmparse prefix for MultiBlock
     void SetParmParsePrefix (std::string name) { pp_prefix = name; }
@@ -383,15 +391,14 @@ public:
 
     // Public data copy for MB
     std::vector<amrex::Box> domain_p;
-    MultiBlockContainer *m_mbc = nullptr;
     amrex::Vector<amrex::Vector<amrex::MultiFab> > vars_new;
     amrex::Vector<amrex::Vector<amrex::MultiFab> > vars_old;
 
     // Velocity time averaged field
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> vel_t_avg;
     amrex::Vector<amrex::Real> t_avg_cnt;
-
 #endif
+
     std::string pp_prefix {"erf"};
 
     void fill_from_bndryregs (const amrex::Vector<amrex::MultiFab*>& mfs,
@@ -495,9 +502,6 @@ private:
                     const amrex::Vector<amrex::MultiFab*>& mfs_vel,
                     const amrex::Vector<amrex::MultiFab*>& mfs_mom,
                     bool fillset=true, bool cons_only=false);
-
-    // Compute a new MultiFab by copying from valid region and filling ghost cells -
-    void FillPatchMoistVars (int lev, amrex::MultiFab& mf);
 
     // Compute new multifabs by copying data from valid region and filling ghost cells.
     // Unlike FillPatch, FillIntermediatePatch will use the supplied multifabs instead of fine level data.
@@ -947,9 +951,13 @@ private:
 
 #endif
 
+#ifdef ERF_USE_MULTIBLOCK
+    MultiBlockContainer *m_mbc = nullptr;
+#endif
+
     static int verbose;
     static int mg_verbose;
-    static bool use_heffte;
+    static bool use_fft;
 
     // Diagnostic output interval
     static int sum_interval;
@@ -959,13 +967,12 @@ private:
     // Native or NetCDF
     static std::string plotfile_type;
 
-    // init_type:  "ideal", "real", "input_sounding", "metgrid" or ""
-    static std::string init_type;
+    static InitType init_type;
 
     // sponge_type:  "input_sponge"
     static std::string sponge_type;
 
-    // use_real_bcs: only true if 1) ( (init_type == real) or (init_type == metgrid) )
+    // use_real_bcs: only true if 1) ( (init_type == InitType::Real) or (init_type == InitType::Metgrid) )
     //                        AND 2) we want to use the bc's from the WRF bdy file
     static bool use_real_bcs;
 
@@ -978,7 +985,7 @@ private:
     int real_set_width{0};
 
     // Flag to trigger initialization from input_sounding like WRF's ideal.exe
-    // used with init_type == "input_sounding"
+    // used with init_type == InitType::Input_Sounding
     static bool init_sounding_ideal;
 
     // Options for vertical interpolation of met_em*.nc data.
@@ -1272,6 +1279,11 @@ private:
         amrex::ParallelDescriptor::Barrier("ERF::setRecordSampleLineInfo");
     }
 
+    // Data sampler for line and plane output
+    int sampler_interval = -1;
+    amrex::Real sampler_per = -1.0;
+    std::unique_ptr<SampleData> data_sampler = nullptr;
+
     amrex::Vector<std::unique_ptr<std::fstream> > datalog;
     amrex::Vector<std::string> datalogname;
 
@@ -1311,6 +1323,10 @@ private:
 
     [[nodiscard]] static int nghost_eb_full ()
     { return 4; }
+#endif
+
+#ifdef ERF_USE_FFT
+    std::unique_ptr<amrex::FFT::PoissonHybrid<amrex::MultiFab>> m_poisson;
 #endif
 
 public:

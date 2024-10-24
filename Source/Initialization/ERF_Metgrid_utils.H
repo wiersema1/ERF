@@ -111,79 +111,6 @@ init_base_state_from_metgrid (const bool use_moisture,
 AMREX_FORCE_INLINE
 AMREX_GPU_DEVICE
 void
-calc_rho_p (const int& kmax,
-            const bool metgrid_debug_psfc,
-            const int& flag_psfc,
-            const amrex::Real& psfc,
-            const amrex::Real& grav,
-            amrex::Real* Thetad_vec,
-            amrex::Real* Thetam_vec,
-            amrex::Real* Q_vec,
-            amrex::Real* z_vec,
-            amrex::Real* Rhom_vec,
-            amrex::Real* Pm_vec)
-{
-    const int maxiter = 10;
-    const amrex::Real tol = 1.0e-10;
-
-    // Calculate or use moist pressure at the surface.
-    amrex::Real Psurf;
-    if (flag_psfc == 1) {
-        Psurf = psfc;
-    } else {
-        amrex::Real t_0 = 290.0; // WRF's model_config_rec%base_temp
-        amrex::Real a   = 50.0; // WRF's model_config_rec%base_lapse
-        Psurf = p_0*exp(-t_0/a+std::pow((std::pow(t_0/a, 2)-2.0*grav*z_vec[0]/(a*R_d)), 0.5));
-    }
-    if (metgrid_debug_psfc) Psurf = p_0;
-
-    // Iterations for the first CC point that is 1/2 dz off the surface
-    {
-        amrex::Real half_dz = z_vec[0];
-        amrex::Real qvf = 1.0+(R_v/R_d)*Q_vec[0];
-        Thetam_vec[0] = Thetad_vec[0]*qvf;
-        Rhom_vec[0] = 1.0; // an initial guess.
-        for (int it=0; it<maxiter; it++) {
-            Pm_vec[0] = Psurf-half_dz*(Rhom_vec[0])*(1.0+Q_vec[0])*grav;
-            if (Pm_vec[0] < 0.0) Pm_vec[0] = 0.0;
-            Rhom_vec[0] = (p_0/(R_d*Thetam_vec[0]))*std::pow(Pm_vec[0]/p_0, iGamma);
-        } // it
-    }
-
-    // Integrate from the first CC point to the top boundary.
-    for (int k=1; k<=kmax; k++) {
-
-        // Assignment only for downward integration in following loop
-        amrex::Real qvf = 1.0+(R_v/R_d)*Q_vec[k];
-        Thetam_vec[k]   = Thetad_vec[k]*qvf;
-
-        // Vertical grid spacing
-        amrex::Real dz = z_vec[k]-z_vec[k-1];
-
-        // Establish known constant
-        amrex::Real rho_tot_lo = Rhom_vec[k-1] * (1. + Q_vec[k-1]);
-        amrex::Real C = -Pm_vec[k-1] + 0.5*rho_tot_lo*grav*dz;
-
-        // Initial guess and residual
-        Pm_vec[k]   = Pm_vec[k-1];
-        Rhom_vec[k] = getRhogivenThetaPress(Thetad_vec[k],
-                                            Pm_vec[k],
-                                            R_d/Cp_d,
-                                            Q_vec[k]);
-        amrex::Real rho_tot_hi = Rhom_vec[k] * (1. + Q_vec[k]);
-        amrex::Real F = Pm_vec[k] + 0.5*rho_tot_hi*grav*dz + C;
-
-        // Do iterations
-        if (std::abs(F)>tol) HSEutils::Newton_Raphson_hse(tol, R_d/Cp_d, dz,
-                                                          grav, C, Thetad_vec[k],
-                                                          Q_vec[k], Q_vec[k],
-                                                          Pm_vec[k], Rhom_vec[k], F);
-    } // k
-}
-
-AMREX_FORCE_INLINE
-AMREX_GPU_DEVICE
-void
 lagrange_interp (const int& order,
                  amrex::Real* x,
                  amrex::Real* y,
@@ -437,7 +364,7 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
                             const int& i,
                             const int& j,
                             const int& src_comp,
-                            const int& it,
+                            const int& itime,
                             char var_type,
                             char stag,
                             const amrex::Array4<amrex::Real const>& orig_z_full,
@@ -457,9 +384,9 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
     int kmax_orig = amrex::ubound(amrex::Box(orig_data)).z;
     int kmax_new  = amrex::ubound(amrex::Box(new_z_full)).z;
 
-    amrex::Array1D<amrex::Real, 0, 500> new_z, new_p, new_data; // length of kmax_new
-    amrex::Array1D<amrex::Real, 0, 200> orig_z, ordered_z, ordered_data; // length of kmax_orig
-    amrex::Array1D<amrex::Real, 0, 200> final_z, final_p, final_data; // length of kmax_orig
+    amrex::Array1D<amrex::Real, 0, 500> new_z, new_p, new_data; // max length of kmax_new is limited here
+    amrex::Array1D<amrex::Real, 0, 200> orig_z, ordered_z, ordered_data; // max length of kmax_orig is limited here
+    amrex::Array1D<amrex::Real, 0, 200> final_z, final_p, final_data; // max length of kmax_orig is limited here
     for (int k=0; k < kmax_new; k++) {
         if (stag == 'X') {
             new_z(k) = 0.25*(new_z_full(i,j,k)+new_z_full(i,j+1,k)+new_z_full(i,j,k+1)+new_z_full(i,j+1,k+1));
@@ -725,7 +652,7 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
     // Save the interpolated data.
     for (int k=0; k < kmax_new; k++) {
         if ((mask(i,j,k)) && (update_bc_data)) bc_data_full(i,j,k,0) = new_data(k);
-        if (it == 0) new_data_full(i,j,k,src_comp) = new_data(k);
+        if (itime == 0) new_data_full(i,j,k,src_comp) = new_data(k);
     }
 
 }
