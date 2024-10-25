@@ -552,7 +552,6 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
     }
 
     int ksta, kend;
-    count = 0;
     if (metgrid_use_below_sfc && metgrid_use_sfc) {
         // Use all levels.
         int kord = 0;
@@ -575,6 +574,7 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
             ordered_z(k) = ordered_z(k+1);
             ordered_data(k) = ordered_data(k+1);
         }
+        count = 0;
         for (int k=0; k < kmax_orig-1; k++) {
             count++;
             if (orig_z(kmax_orig-1) == ordered_z(k)) break;
@@ -584,6 +584,7 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
 
     } else if (!metgrid_use_below_sfc && metgrid_use_sfc) {
         // Use all levels above and including the surface.
+        count = 0;
         int kcount = k_above_sfc-1-zap_below;
         for (int k=0; k < kmax_orig; k++) {
             if (ordered_z(kcount) == orig_z(k)) {
