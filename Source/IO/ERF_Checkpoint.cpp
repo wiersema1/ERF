@@ -147,7 +147,7 @@ ERF::WriteCheckpointFile () const
 
         if (solverChoice.use_terrain)  {
             // Note that we also write the ghost cells of z_phys_nd
-            IntVect ng = z_phys_nd[lev]->nGrowVect();
+            ng = z_phys_nd[lev]->nGrowVect();
             MultiFab z_height(convert(grids[lev],IntVect(1,1,1)),dmap[lev],1,ng);
             MultiFab::Copy(z_height,*z_phys_nd[lev],0,0,1,ng);
             VisMF::Write(z_height, MultiFabFileFullPrefix(lev, checkpointname, "Level_", "Z_Phys_nd"));
@@ -161,7 +161,7 @@ ERF::WriteCheckpointFile () const
         int qmoist_nvar = qmoist_indices.size();
         for (int var = 0; var < qmoist_nvar; var++) {
            ng = qmoist[lev][qmoist_indices[var]]->nGrowVect();
-           const int ncomp = 1;
+           ncomp = 1;
            MultiFab moist_vars(grids[lev],dmap[lev],ncomp,ng);
            MultiFab::Copy(moist_vars,*(qmoist[lev][qmoist_indices[var]]),0,0,ncomp,ng);
            VisMF::Write(moist_vars, amrex::MultiFabFileFullPrefix(lev, checkpointname, "Level_", qmoist_names[var]));
@@ -362,15 +362,38 @@ ERF::ReadCheckpointFile ()
     // ncomp is only valid after we MakeNewLevelFromScratch (asks micro how many vars)
     // NOTE: Data is written over ncomp, so check that we match the header file
     int ncomp_cons = vars_new[0][Vars::cons].nComp();
-    AMREX_ASSERT(chk_ncomp_cons == ncomp_cons);
+
+    // NOTE: QKE was removed so this is for backward compatibility
+    AMREX_ASSERT((chk_ncomp_cons==ncomp_cons) || ((chk_ncomp_cons-1)==ncomp_cons));
 
     // read in the MultiFab data
     for (int lev = 0; lev <= finest_level; ++lev)
     {
-        MultiFab cons(grids[lev],dmap[lev],ncomp_cons,0);
-        VisMF::Read(cons, MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "Cell"));
-        MultiFab::Copy(vars_new[lev][Vars::cons],cons,0,0,ncomp_cons,0);
-        vars_new[lev][Vars::cons].setBndry(1.0e34);
+        // NOTE: For backward compatibility (chk file has QKE)
+        if ((chk_ncomp_cons-1)==ncomp_cons) {
+            MultiFab cons(grids[lev],dmap[lev],chk_ncomp_cons,0);
+            VisMF::Read(cons, MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "Cell"));
+
+            // Copy up to RhoKE_comp
+            MultiFab::Copy(vars_new[lev][Vars::cons],cons,0,0,(RhoKE_comp+1),0);
+
+            // Only if we have a PBL model do we need to copy QKE is src to KE in dst
+            if (solverChoice.turbChoice[lev].pbl_type == PBLType::MYNN25) {
+                MultiFab::Copy(vars_new[lev][Vars::cons],cons,(RhoKE_comp+1),RhoKE_comp,1,0);
+                vars_new[lev][Vars::cons].mult(0.5,RhoKE_comp,1,0);
+            }
+
+            // Copy other components
+            int ncomp_remainder = ncomp_cons - (RhoKE_comp + 1);
+            MultiFab::Copy(vars_new[lev][Vars::cons],cons,(RhoKE_comp+2),(RhoKE_comp+1),ncomp_remainder,0);
+
+            vars_new[lev][Vars::cons].setBndry(1.0e34);
+        } else {
+            MultiFab cons(grids[lev],dmap[lev],ncomp_cons,0);
+            VisMF::Read(cons, MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "Cell"));
+            MultiFab::Copy(vars_new[lev][Vars::cons],cons,0,0,ncomp_cons,0);
+            vars_new[lev][Vars::cons].setBndry(1.0e34);
+        }
 
         MultiFab xvel(convert(grids[lev],IntVect(1,0,0)),dmap[lev],1,0);
         VisMF::Read(xvel, MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "XFace"));
@@ -433,7 +456,7 @@ ERF::ReadCheckpointFile ()
         int qmoist_nvar = qmoist_indices.size();
         for (int var = 0; var < qmoist_nvar; var++) {
             ng = qmoist[lev][qmoist_indices[var]]->nGrowVect();
-            const int ncomp = 1;
+            ncomp = 1;
             MultiFab moist_vars(grids[lev],dmap[lev],ncomp,ng);
             VisMF::Read(moist_vars, amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", qmoist_names[var]));
             MultiFab::Copy(*(qmoist[lev][qmoist_indices[var]]),moist_vars,0,0,ncomp,ng);
