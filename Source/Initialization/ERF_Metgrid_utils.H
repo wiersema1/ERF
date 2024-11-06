@@ -112,8 +112,8 @@ AMREX_FORCE_INLINE
 AMREX_GPU_DEVICE
 void
 lagrange_interp (const int& order,
-                 amrex::Real* x,
-                 amrex::Real* y,
+                 amrex::Vector<amrex::Real>& x,
+                 amrex::Vector<amrex::Real>& y,
                  amrex::Real& new_x,
                  amrex::Real& new_y)
 {
@@ -146,12 +146,12 @@ lagrange_setup (char var_type,
                 const int& orig_n,
                 const int& new_n,
                 const int& order,
-                amrex::Real* orig_x_z,
-                amrex::Real* orig_x_p,
-                amrex::Real* orig_y,
-                amrex::Real* new_x_z,
-                amrex::Real* new_x_p,
-                amrex::Real* new_y)
+                amrex::Vector<amrex::Real>& orig_x_z,
+                amrex::Vector<amrex::Real>& orig_x_p,
+                amrex::Vector<amrex::Real>& orig_y,
+                amrex::Vector<amrex::Real>& new_x_z,
+                amrex::Vector<amrex::Real>& new_x_p,
+                amrex::Vector<amrex::Real>& new_y)
 {
     if (order < 1) amrex::Abort("metgrid initialization, we cannot go lower order than linear");
 
@@ -200,22 +200,21 @@ lagrange_setup (char var_type,
             continue;
         }
 
-        amrex::Real new_x;
-        amrex::Array1D<amrex::Real, 0, 6> orig_x_sub, orig_y_sub;
-
         if (order%2 != 0) {
             if ((kl-((order+1)/2-1) >= 0) && (kr+((order+1)/2-1) <= orig_n-1)) {
                 int ksta = kl-((order/2)-1);
                 int kend = ksta+order;
+                amrex::Real new_x;
+                amrex::Vector<amrex::Real> orig_x_sub;
                 if (exp_interp) {
                     new_x = new_x_p[new_k];
-                    for (int k=ksta; k <= kend; k++) orig_x_sub(k-ksta) = orig_x_p[k];
+                    orig_x_sub = {orig_x_p.begin()+ksta, orig_x_p.begin()+kend};
                 } else {
                     new_x = new_x_z[new_k];
-                    for (int k=ksta; k <= kend; k++) orig_x_sub(k-ksta) = orig_x_z[k];
+                    orig_x_sub = {orig_x_z.begin()+ksta, orig_x_z.begin()+kend};
                 }
-                for (int k=ksta; k <= kend; k++) orig_y_sub(k-ksta) = orig_y[k];
-                lagrange_interp(order, &(orig_x_sub(0)), &(orig_y_sub(0)), new_x, new_y[new_k]);
+                amrex::Vector<amrex::Real> orig_y_sub = {orig_y.begin()+ksta, orig_y.begin()+kend};
+                lagrange_interp(order, orig_x_sub, orig_y_sub, new_x, new_y[new_k]);
             } else {
                 amrex::Abort("metgrid initialization, lost in lagrange_setup (odd order)");
             }
@@ -226,45 +225,49 @@ lagrange_setup (char var_type,
                     int ksta = kl-(order/2-1);
                     int kend = ksta+order;
                     if (debug) amrex::Print() << "   (1a)   new_x=" << new_x_z[new_k] << "   new_x_p=" << new_x_p[new_k] << "   kl=" << kl << "   kr=" << kr <<"   ksta=" << ksta << "   kend=" << kend << std::endl;
+                    amrex::Real new_x;
+                    amrex::Vector<amrex::Real> orig_x_sub, orig_y_sub;
                     if (exp_interp) {
                         new_x = new_x_p[new_k];
-                        for (int k=ksta; k <= kend; k++) orig_x_sub(k-ksta) = orig_x_p[k];
+                        for (int k=ksta; k <= kend; k++) orig_x_sub.push_back(orig_x_p[k]);
                     } else {
                         new_x = new_x_z[new_k];
-                        for (int k=ksta; k <= kend; k++) orig_x_sub(k-ksta) = orig_x_z[k];
+                        for (int k=ksta; k <= kend; k++) orig_x_sub.push_back(orig_x_z[k]);
                     }
-                    for (int k=ksta; k <= kend; k++) orig_y_sub(k-ksta) = orig_y[k];
+                    for (int k=ksta; k <= kend; k++) orig_y_sub.push_back(orig_y[k]);
                     if (debug) {
                         amrex::Print() << "    orig_x_sub = [";
-                        for (int k=0; k < kend-ksta; k++) amrex::Print() << " " << orig_x_sub(k);
+                        for (int k=0; k < orig_x_sub.size(); k++) amrex::Print() << " " << orig_x_sub[k];
                         amrex::Print() << "]" << std::endl;
                         amrex::Print() << "    orig_y_sub = [";
-                        for (int k=0; k < kend-ksta; k++) amrex::Print() << " " << orig_y_sub(k);
+                        for (int k=0; k < orig_y_sub.size(); k++) amrex::Print() << " " << orig_y_sub[k];
                         amrex::Print() << "]" << std::endl;
                     }
-                    lagrange_interp(order, &(orig_x_sub(0)), &(orig_y_sub(0)), new_x, new_y_l);
+                    lagrange_interp(order, orig_x_sub, orig_y_sub, new_x, new_y_l);
                 }
                 {
                     int ksta = kl-order/2;
                     int kend = ksta+order;
                     if (debug) amrex::Print() << "new_k=" << new_k << "   (1b)   new_x=" << new_x_z[new_k] << "   new_x_p=" << new_x_p[new_k] << "   kl=" << kl << "   kr=" << kr <<"   ksta=" << ksta << "   kend=" << kend << std::endl;
+                    amrex::Real new_x;
+                    amrex::Vector<amrex::Real> orig_x_sub, orig_y_sub;
                     if (exp_interp) {
                         new_x = new_x_p[new_k];
-                        for (int k=ksta; k <= kend; k++) orig_x_sub(k-ksta) = orig_x_p[k];
+                        for (int k=ksta; k <= kend; k++) orig_x_sub.push_back(orig_x_p[k]);
                     } else {
                         new_x = new_x_z[new_k];
-                        for (int k=ksta; k <= kend; k++) orig_x_sub(k-ksta) = orig_x_z[k];
+                        for (int k=ksta; k <= kend; k++) orig_x_sub.push_back(orig_x_z[k]);
                     }
-                    for (int k=ksta; k <= kend; k++) orig_y_sub(k-ksta) = orig_y[k];
+                    for (int k=ksta; k <= kend; k++) orig_y_sub.push_back(orig_y[k]);
                     if (debug) {
                         amrex::Print() << "    orig_x_sub = [";
-                        for (int k=0; k < kend-ksta; k++) amrex::Print() << " " << orig_x_sub(k);
+                        for (int k=0; k < orig_x_sub.size(); k++) amrex::Print() << " " << orig_x_sub[k];
                         amrex::Print() << "]" << std::endl;
                         amrex::Print() << "    orig_y_sub = [";
-                        for (int k=0; k < kend-ksta; k++) amrex::Print() << " " << orig_y_sub(k);
+                        for (int k=0; k < orig_y_sub.size(); k++) amrex::Print() << " " << orig_y_sub[k];
                         amrex::Print() << "]" << std::endl;
                     }
-                    lagrange_interp(order, &(orig_x_sub(0)), &(orig_y_sub(0)), new_x, new_y_r);
+                    lagrange_interp(order, orig_x_sub, orig_y_sub, new_x, new_y_r);
                 }
                 new_y[new_k] = 0.5*(new_y_l+new_y_r);
                 if (debug) amrex::Print() << "    new_y=" << new_y[new_k] << std::endl;
@@ -272,45 +275,49 @@ lagrange_setup (char var_type,
                 int ksta = kl-(order/2-1);
                 int kend = ksta+order;
                 if (debug) amrex::Print() << "   (2)   new_x=" << new_x_z[new_k] << "   new_x_p=" << new_x_p[new_k] << "   kl=" << kl << "   kr=" << kr <<"   ksta=" << ksta << "   kend=" << kend << std::endl;
+                amrex::Real new_x;
+                amrex::Vector<amrex::Real> orig_x_sub, orig_y_sub;
                 if (exp_interp) {
                     new_x = new_x_p[new_k];
-                    for (int k=ksta; k <= kend; k++) orig_x_sub(k-ksta) = orig_x_p[k];
+                    for (int k=ksta; k <= kend; k++) orig_x_sub.push_back(orig_x_p[k]);
                 } else {
                     new_x = new_x_z[new_k];
-                    for (int k=ksta; k <= kend; k++) orig_x_sub(k-ksta) = orig_x_z[k];
+                    for (int k=ksta; k <= kend; k++) orig_x_sub.push_back(orig_x_z[k]);
                 }
-                for (int k=ksta; k <= kend; k++) orig_y_sub(k-ksta) = orig_y[k];
+                for (int k=ksta; k <= kend; k++) orig_y_sub.push_back(orig_y[k]);
                 if (debug) {
                     amrex::Print() << "    orig_x_sub = [";
-                    for (int k=0; k < kend-ksta; k++) amrex::Print() << " " << orig_x_sub(k);
+                    for (int k=0; k < orig_x_sub.size(); k++) amrex::Print() << " " << orig_x_sub[k];
                     amrex::Print() << "]" << std::endl;
                     amrex::Print() << "    orig_y_sub = [";
-                    for (int k=0; k < kend-ksta; k++) amrex::Print() << " " << orig_y_sub(k);
+                    for (int k=0; k < orig_y_sub.size(); k++) amrex::Print() << " " << orig_y_sub[k];
                     amrex::Print() << "]" << std::endl;
                 }
-                lagrange_interp(order, &(orig_x_sub(0)), &(orig_y_sub(0)), new_x, new_y[new_k]);
+                lagrange_interp(order, orig_x_sub, orig_y_sub, new_x, new_y[new_k]);
                 if (debug) amrex::Print() << "    new_y=" << new_y[new_k] << std::endl;
             } else if ((kl-order/2 >= 0) && (kr+(order/2-1) <= orig_n-1)) {
                 int ksta = kl-order/2;
                 int kend = ksta+order;
                 if (debug) amrex::Print() << "   (3)   new_x=" << new_x_z[new_k] << "   new_x_p=" << new_x_p[new_k] << "   kl=" << kl << "   kr=" << kr <<"   ksta=" << ksta << "   kend=" << kend << std::endl;
+                amrex::Real new_x;
+                amrex::Vector<amrex::Real> orig_x_sub, orig_y_sub;
                 if (exp_interp) {
                     new_x = new_x_p[new_k];
-                    for (int k=ksta; k <= kend; k++) orig_x_sub(k-ksta) = orig_x_p[k];
+                    for (int k=ksta; k <= kend; k++) orig_x_sub.push_back(orig_x_p[k]);
                 } else {
                     new_x = new_x_z[new_k];
-                    for (int k=ksta; k <= kend; k++) orig_x_sub(k-ksta) = orig_x_z[k];
+                    for (int k=ksta; k <= kend; k++) orig_x_sub.push_back(orig_x_z[k]);
                 }
-                for (int k=ksta; k <= kend; k++) orig_y_sub(k-ksta) = orig_y[k];
+                for (int k=ksta; k <= kend; k++) orig_y_sub.push_back(orig_y[k]);
                 if (debug) {
                     amrex::Print() << "    orig_x_sub = [";
-                    for (int k=0; k < kend-ksta; k++) amrex::Print() << " " << orig_x_sub(k);
+                    for (int k=0; k < orig_x_sub.size(); k++) amrex::Print() << " " << orig_x_sub[k];
                     amrex::Print() << "]" << std::endl;
                     amrex::Print() << "    orig_y_sub = [";
-                    for (int k=0; k < kend-ksta; k++) amrex::Print() << " " << orig_y_sub(k);
+                    for (int k=0; k < orig_y_sub.size(); k++) amrex::Print() << " " << orig_y_sub[k];
                     amrex::Print() << "]" << std::endl;
                 }
-                lagrange_interp(order, &(orig_x_sub(0)), &(orig_y_sub(0)), new_x, new_y[new_k]);
+                lagrange_interp(order, orig_x_sub, orig_y_sub, new_x, new_y[new_k]);
                 if (debug) amrex::Print() << "    new_y=" << new_y[new_k] << std::endl;
             } else {
                 amrex::Abort("metgrid initialization, lost in lagrange_setup (even order)");
@@ -320,23 +327,25 @@ lagrange_setup (char var_type,
             int ksta = kl;
             int kend = kr;
             if (debug) amrex::Print() << "   (4)   new_x=" << new_x_z[new_k] << "   new_x_p=" << new_x_p[new_k] << "   kl=" << kl << "   kr=" << kr <<"   ksta=" << ksta << "   kend=" << kend << std::endl;
+            amrex::Real new_x;
+            amrex::Vector<amrex::Real> orig_x_sub, orig_y_sub;
             if (exp_interp) {
                 new_x = new_x_p[new_k];
-                for (int k=ksta; k <= kend; k++) orig_x_sub(k-ksta) = orig_x_p[k];
+                for (int k=ksta; k <= kend; k++) orig_x_sub.push_back(orig_x_p[k]);
             } else {
                 new_x = new_x_z[new_k];
-                for (int k=ksta; k <= kend; k++) orig_x_sub(k-ksta) = orig_x_z[k];
+                for (int k=ksta; k <= kend; k++) orig_x_sub.push_back(orig_x_z[k]);
             }
-            for (int k=ksta; k <= kend; k++) orig_y_sub(k-ksta) = orig_y[k];
+            for (int k=ksta; k <= kend; k++) orig_y_sub.push_back(orig_y[k]);
             if (debug) {
                 amrex::Print() << "    orig_x_sub = [";
-                for (int k=0; k < kend-ksta; k++) amrex::Print() << " " << orig_x_sub(k);
+                for (int k=0; k < orig_x_sub.size(); k++) amrex::Print() << " " << orig_x_sub[k];
                 amrex::Print() << "]" << std::endl;
                 amrex::Print() << "    orig_y_sub = [";
-                for (int k=0; k < kend-ksta; k++) amrex::Print() << " " << orig_y_sub(k);
+                for (int k=0; k < orig_y_sub.size(); k++) amrex::Print() << " " << orig_y_sub[k];
                 amrex::Print() << "]" << std::endl;
             }
-            lagrange_interp(1, &(orig_x_sub(0)), &(orig_y_sub(0)), new_x, new_y[new_k]);
+            lagrange_interp(1, orig_x_sub, orig_y_sub, new_x, new_y[new_k]);
             if (debug) amrex::Print() << "    new_y=" << new_y[new_k] << std::endl;
         }
     }
@@ -384,46 +393,49 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
     int kmax_orig = amrex::ubound(amrex::Box(orig_data)).z;
     int kmax_new  = amrex::ubound(amrex::Box(new_z_full)).z;
 
-    amrex::Array1D<amrex::Real, 0, 500> new_z, new_p, new_data; // max length of kmax_new is limited here
-    amrex::Array1D<amrex::Real, 0, 200> orig_z, ordered_z, ordered_data; // max length of kmax_orig is limited here
-    amrex::Array1D<amrex::Real, 0, 200> final_z, final_p, final_data; // max length of kmax_orig is limited here
+    amrex::Vector<amrex::Real> new_z, new_p, new_data;
+    new_z.resize(kmax_new);
+    new_p.resize(kmax_new);
+    new_data.resize(kmax_new);
     for (int k=0; k < kmax_new; k++) {
         if (stag == 'X') {
-            new_z(k) = 0.25*(new_z_full(i,j,k)+new_z_full(i,j+1,k)+new_z_full(i,j,k+1)+new_z_full(i,j+1,k+1));
+            new_z[k] = 0.25*(new_z_full(i,j,k)+new_z_full(i,j+1,k)+new_z_full(i,j,k+1)+new_z_full(i,j+1,k+1));
         } else if (stag == 'Y') {
-            new_z(k) = 0.25*(new_z_full(i,j,k)+new_z_full(i+1,j,k)+new_z_full(i,j,k+1)+new_z_full(i+1,j,k+1));
+            new_z[k] = 0.25*(new_z_full(i,j,k)+new_z_full(i+1,j,k)+new_z_full(i,j,k+1)+new_z_full(i+1,j,k+1));
         } else if (stag == 'M') {
-            new_z(k) = 0.125*(new_z_full(i,j,k  )+new_z_full(i,j+1,k  )+new_z_full(i+1,j,k  )+new_z_full(i+1,j+1,k  )+
+            new_z[k] = 0.125*(new_z_full(i,j,k  )+new_z_full(i,j+1,k  )+new_z_full(i+1,j,k  )+new_z_full(i+1,j+1,k  )+
                               new_z_full(i,j,k+1)+new_z_full(i,j+1,k+1)+new_z_full(i+1,j,k+1)+new_z_full(i+1,j+1,k+1));
         }
-        calc_p_isothermal(new_z(k), new_p(k));
+        calc_p_isothermal(new_z[k], new_p[k]);
     }
 
+    amrex::Vector<amrex::Real> orig_z;
+    orig_z.resize(kmax_orig);
     for (int k=0; k < kmax_orig; k++) {
         if (stag == 'M') {
-            orig_z(k) = orig_z_full(i,j,k);
+            orig_z[k] = orig_z_full(i,j,k);
         } else if (stag == 'X') {
             if (i == 0) {
-                orig_z(k) = orig_z_full(i,j,k);
+                orig_z[k] = orig_z_full(i,j,k);
             } else if (i == imax_orig) {
-                orig_z(k) = orig_z_full(imax_orig-1,j,k);
+                orig_z[k] = orig_z_full(imax_orig-1,j,k);
             } else {
-                orig_z(k) = 0.5*(orig_z_full(i,j,k)+orig_z_full(i-1,j,k));
+                orig_z[k] = 0.5*(orig_z_full(i,j,k)+orig_z_full(i-1,j,k));
             }
         } else if (stag == 'Y') {
             if (j == 0) {
-                orig_z(k) = orig_z_full(i,j,k);
+                orig_z[k] = orig_z_full(i,j,k);
             } else if (j == jmax_orig) {
-                orig_z(k) = orig_z_full(i,jmax_orig-1,k);
+                orig_z[k] = orig_z_full(i,jmax_orig-1,k);
             } else {
-                orig_z(k) = 0.5*(orig_z_full(i,j,k)+orig_z_full(i,j-1,k));
+                orig_z[k] = 0.5*(orig_z_full(i,j,k)+orig_z_full(i,j-1,k));
             }
         }
     }
 
     // Check if the data is top-down instead of bottom-up.
     bool flip_data_required = false;
-    if (orig_z(1) > orig_z(kmax_orig-1)) flip_data_required = true;
+    if (orig_z[1] > orig_z[kmax_orig-1]) flip_data_required = true;
     if (flip_data_required) amrex::Abort("metgrid initialization flip_data_required. Not yet implemented.");
 
     // Search for the first level above the surface in the origin data.
@@ -431,25 +443,26 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
     // different than the topography processed by WPS.
     int k_above_sfc = 0;
     for (int k=1; k < kmax_orig; k++) {
-        if (orig_z(k) > orig_z(0)) {
+        if (orig_z[k] > orig_z[0]) {
             k_above_sfc = k;
             break;
         }
     }
 
-    int count = 0;
     int zap = 0;
     int zap_below = 0;
     int zap_above = 0;
+    amrex::Vector<amrex::Real> ordered_z, ordered_data;
 
     if (k_above_sfc > 1) {
         // The levels are not monotonically increasing in height, so
         // we sort and then make "artistic" quality control choices.
+        int count = 0;
 
         // Insert levels that are below the surface.
         for (int k=1; k < k_above_sfc; k++) {
-            ordered_z(count) = orig_z(k);
-            ordered_data(count) = orig_data(i,j,k);
+            ordered_z.push_back(orig_z[k]);
+            ordered_data.push_back(orig_data(i,j,k));
             count++;
         }
 
@@ -461,8 +474,8 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
         // pressure-space. For simplicity, calculate delta P assuming a
         // baroclinic atmosphere.
         amrex::Real Pu, Pl;
-        calc_p_isothermal(orig_z(0), Pu);
-        calc_p_isothermal(ordered_z(count-1), Pl);
+        calc_p_isothermal(orig_z[0], Pu);
+        calc_p_isothermal(ordered_z[count-1], Pl);
         if (Pl-Pu < metgrid_proximity) {
             count--;
             zap = 1;
@@ -470,8 +483,8 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
         }
 
         // Insert the surface level.
-        ordered_z(count) = orig_z(0);
-        ordered_data(count) = orig_data(i,j,0);
+        ordered_z.push_back(orig_z[0]);
+        ordered_data.push_back(orig_data(i,j,0));
         count++;
 
         // Quoting WRF's comments, the next level to use is at,
@@ -484,7 +497,7 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
         // ERF levels from the surface.
         if (metgrid_force_sfc_k > 0) {
             for (int k=k_above_sfc; k < kmax_orig; k++) {
-                if (orig_z(k) > new_z(metgrid_force_sfc_k-1)) {
+                if (orig_z[k] > new_z[metgrid_force_sfc_k-1]) {
                     knext = k;
                     break;
                 } else {
@@ -496,8 +509,8 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
 
         // Check if the level that is nearest to and above the surface
         // is "too close". If so, we'll ignore that level.
-        calc_p_isothermal(orig_z(knext), Pu);
-        calc_p_isothermal(ordered_z(count-1), Pl);
+        calc_p_isothermal(orig_z[knext], Pu);
+        calc_p_isothermal(ordered_z[count-1], Pl);
         if (Pl-Pu < metgrid_proximity) {
             knext++;
             zap++;
@@ -506,8 +519,8 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
 
         // Insert levels that are above the surface.
         for (int k=knext; k < kmax_orig; k++) {
-            ordered_z(count) = orig_z(k);
-            ordered_data(count) = orig_data(i,j,k);
+            ordered_z.push_back(orig_z[k]);
+            ordered_data.push_back(orig_data(i,j,k));
             count++;
         }
 
@@ -515,16 +528,16 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
         // The surface is the lowest level in the origin data.
 
         // Insert the surface.
-        ordered_z(count) = orig_z(0);
-        ordered_data(count) = orig_data(i,j,0);
-        count++;
+        ordered_z.push_back(orig_z[0]);
+        ordered_data.push_back(orig_data(i,j,0));
 
         // Similar to above, conditionally more strongly use the
         // surface data.
+        int count = 1;
         int knext = count;
         if (metgrid_force_sfc_k > 0) {
             for (int k=knext; k < kmax_orig; k++) {
-                if (orig_z(k) > new_z(metgrid_force_sfc_k)) {
+                if (orig_z[k] > new_z[metgrid_force_sfc_k]) {
                     knext = k;
                     break;
                 } else {
@@ -538,15 +551,15 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
         // "too close" to the prior valid level.
         for (int k=knext; k < kmax_orig; k++) {
             amrex::Real Pu, Pl;
-            calc_p_isothermal(orig_z(k), Pu);
-            calc_p_isothermal(ordered_z(count-1), Pl);
+            calc_p_isothermal(orig_z[k], Pu);
+            calc_p_isothermal(ordered_z[count-1], Pl);
             if (Pl-Pu < metgrid_proximity) {
                 zap++;
                 zap_above++;
                 continue;
             }
-            ordered_z(count) = orig_z(k);
-            ordered_data(count) = orig_data(i,j,k);
+            ordered_z.push_back(orig_z[k]);
+            ordered_data.push_back(orig_data(i,j,k));
             count++;
         }
     }
@@ -554,46 +567,48 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
     int ksta, kend;
     if (metgrid_use_below_sfc && metgrid_use_sfc) {
         // Use all levels.
-        int kord = 0;
-        for (int k=1; k < count; k++) {
-            kord++;
-            if (ordered_z(count-1) == orig_z(k)) break;
+        int count = 0;
+        for (int k=1; k < ordered_z.size(); k++) {
+            count++;
+            if (ordered_z[ordered_z.size()-1] == orig_z[k]) break;
         }
         ksta = 0;
-        kend = ksta+kord;
+        kend = ksta+count-1;
     } else if (metgrid_use_below_sfc && !metgrid_use_sfc) {
         // Use all levels except for the surface.
         int ksfc = 0;
         for (int k=0; k < kmax_orig; k++) {
-            if (ordered_z(k) == orig_z(0)) {
+            if (ordered_z[k] == orig_z[0]) {
                 ksfc = k;
                 break;
             }
         }
         for (int k=ksfc; k < kmax_orig-1; k++) {
-            ordered_z(k) = ordered_z(k+1);
-            ordered_data(k) = ordered_data(k+1);
+            ordered_z[k] = ordered_z[k+1];
+            ordered_data[k] = ordered_data[k+1];
         }
-        count = 0;
-        for (int k=0; k < kmax_orig-1; k++) {
+        ordered_z.resize(kmax_orig-1);
+        ordered_data.resize(kmax_orig-1);
+        int count = 0;
+        for (int k=0; k < kmax_orig; k++) {
             count++;
-            if (orig_z(kmax_orig-1) == ordered_z(k)) break;
+            if (orig_z[kmax_orig-1] == ordered_z[k]) break;
         }
         ksta = 0;
-        kend = ksta+count;
+        kend = ksta+count-1;
 
     } else if (!metgrid_use_below_sfc && metgrid_use_sfc) {
         // Use all levels above and including the surface.
-        count = 0;
         int kcount = k_above_sfc-1-zap_below;
+        int count = 0;
         for (int k=0; k < kmax_orig; k++) {
-            if (ordered_z(kcount) == orig_z(k)) {
+            if (ordered_z[kcount] == orig_z[k]) {
                 kcount++;
                 count++;
             }
         }
         ksta = k_above_sfc-1-zap_below;
-        kend = ksta+count;
+        kend = ksta+count-1;
     } else {
         // We shouldn't be in here!
         amrex::Abort("metgrid initialization, !use_levels below_ground && !metgrid_use_sfc");
@@ -612,23 +627,27 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
 //        amrex::Abort("metgrid initialization, use_trop not yet implemented");
 //    }
 
-    // Final check that levels are not too close together.
-    final_z(0) = ordered_z(ksta);
-    amrex::Real p;
-    calc_p_isothermal(final_z(0), p);
-    final_p(0) = p;
-    final_data(0) = ordered_data(ksta);
+    amrex::Vector<amrex::Real> ordered_p;
+    for (int k=0; k < ordered_z.size(); k++) {
+        amrex::Real p;
+        calc_p_isothermal(ordered_z[k], p);
+        ordered_p.push_back(p);
+    }
+
     int new_n = 1;
     int zap_final = 0;
-    for (int k=ksta+1; k < kend; k++) {
-        calc_p_isothermal(ordered_z(k), p);
-        if (final_p(new_n-1)-p < metgrid_proximity) {
+    amrex::Vector<amrex::Real> final_z, final_p, final_data;
+    final_z.push_back(ordered_z[ksta]);
+    final_p.push_back(ordered_p[ksta]);
+    final_data.push_back(ordered_data[ksta]);
+    for (int k=ksta+1; k <= kend; k++) {
+        if ((final_p[new_n-1]-ordered_p[k]) < metgrid_proximity) {
             zap_final++;
         } else {
-            final_z(new_n) = ordered_z(k);
-            final_p(new_n) = p;
-            final_data(new_n) = ordered_data(k);
             new_n++;
+            final_z.push_back(ordered_z[k]);
+            final_p.push_back(ordered_p[k]);
+            final_data.push_back(ordered_data[k]);
         }
     }
     kend -= zap_final;
@@ -639,21 +658,21 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
                    kend-ksta,
                    kmax_new,
                    metgrid_order,
-                   &(final_z(0)),
-                   &(final_p(0)),
-                   &(final_data(0)),
-                   &(new_z(0)),
-                   &(new_p(0)),
-                   &(new_data(0)));
+                   final_z,
+                   final_p,
+                   final_data,
+                   new_z,
+                   new_p,
+                   new_data);
 
     // Optionally replace the lowest level of data with the surface
     // field from the origin data.
-    if (metgrid_retain_sfc) new_data(0) = ordered_data(0);
+    if (metgrid_retain_sfc) new_data[0] = ordered_data[0];
 
     // Save the interpolated data.
     for (int k=0; k < kmax_new; k++) {
-        if ((mask(i,j,k)) && (update_bc_data)) bc_data_full(i,j,k,0) = new_data(k);
-        if (itime == 0) new_data_full(i,j,k,src_comp) = new_data(k);
+        if ((mask(i,j,k)) && (update_bc_data)) bc_data_full(i,j,k,0) = new_data[k];
+        if (itime == 0) new_data_full(i,j,k,src_comp) = new_data[k];
     }
 
 }
