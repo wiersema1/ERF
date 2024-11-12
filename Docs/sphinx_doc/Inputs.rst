@@ -1302,6 +1302,7 @@ List of Parameters
 |                                  | vertical levels   |                    |                  |
 +----------------------------------+-------------------+--------------------+------------------+
 
+
 Notes
 -----------------
 
@@ -1336,6 +1337,10 @@ then moist and dry conditions throughout the air column are determined by
 integrating the hydrostatic equation from the surface.
 
 If **erf.init_type = custom** or **erf.init_type = input_sounding**, ``erf.nc_init_file`` and ``erf.nc_bdy_file`` do not need to be set.
+
+Note that the **erf.project_initial_velocity** option is available for all **init_type** options.  If using the anelastic
+formulation this will be true regardless of the input; if using the compressible formulation the default is false but
+that can be over-written.
 
 Map Scale Factors
 =================
