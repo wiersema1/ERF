@@ -245,32 +245,73 @@ ERF::init_from_metgrid (int lev)
     int MetGridBdyEnd = MetGridBdyVars::NumTypes-1;
     if (use_moisture) MetGridBdyEnd = MetGridBdyVars::NumTypes;
 
-    // Zero out fabs_for_bcs on the global domain
-    Vector<Vector<FArrayBox>> fabs_for_bcs;
-    fabs_for_bcs.resize(ntimes);
-    for (int itime(0); itime < ntimes; itime++) {
-        fabs_for_bcs[itime].resize(MetGridBdyEnd);
+    // Zero out the bdy data to start off
+    bdy_data_xlo.resize(ntimes);
+    bdy_data_xhi.resize(ntimes);
+    bdy_data_ylo.resize(ntimes);
+    bdy_data_yhi.resize(ntimes);
 
-        Box gdomain;
-        Box ldomain;
+    for (int itime(0); itime < ntimes; itime++) {
+        bdy_data_xlo[itime].resize(MetGridBdyEnd);
+        bdy_data_xhi[itime].resize(MetGridBdyEnd);
+        bdy_data_ylo[itime].resize(MetGridBdyEnd);
+        bdy_data_yhi[itime].resize(MetGridBdyEnd);
+
+        // Build the boxes for each BDY FAB
+        const auto& lo = geom[lev].Domain().loVect();
+        const auto& hi = geom[lev].Domain().hiVect();
+        IntVect plo(lo);
+        IntVect phi(hi);
+
+        plo[0] = lo[0];              plo[1] = lo[1]; plo[2] = lo[2];
+        phi[0] = lo[0]+real_width-1; phi[1] = hi[1]; phi[2] = hi[2];
+        const Box pbx_xlo(plo, phi);
+        Box xlo_plane_no_stag(pbx_xlo);
+        Box xlo_plane_x_stag = pbx_xlo; xlo_plane_x_stag.shiftHalf(0,-1);
+        Box xlo_plane_y_stag = convert(pbx_xlo, {0, 1, 0});
+
+        plo[0] = hi[0]-real_width+1; plo[1] = lo[1]; plo[2] = lo[2];
+        phi[0] = hi[0];              phi[1] = hi[1]; phi[2] = hi[2];
+        const Box pbx_xhi(plo, phi);
+        Box xhi_plane_no_stag(pbx_xhi);
+        Box xhi_plane_x_stag = pbx_xhi; xhi_plane_x_stag.shiftHalf(0,1);
+        Box xhi_plane_y_stag = convert(pbx_xhi, {0, 1, 0});
+
+        plo[1] = lo[1];              plo[0] = lo[0]; plo[2] = lo[2];
+        phi[1] = lo[1]+real_width-1; phi[0] = hi[0]; phi[2] = hi[2];
+        const Box pbx_ylo(plo, phi);
+        Box ylo_plane_no_stag(pbx_ylo);
+        Box ylo_plane_x_stag = convert(pbx_ylo, {1, 0, 0});
+        Box ylo_plane_y_stag = pbx_ylo; ylo_plane_y_stag.shiftHalf(1,-1);
+
+        plo[1] = hi[1]-real_width+1; plo[0] = lo[0]; plo[2] = lo[2];
+        phi[1] = hi[1];              phi[0] = hi[0]; phi[2] = hi[2];
+        const Box pbx_yhi(plo, phi);
+        Box yhi_plane_no_stag(pbx_yhi);
+        Box yhi_plane_x_stag = convert(pbx_yhi, {1, 0, 0});
+        Box yhi_plane_y_stag = pbx_yhi; yhi_plane_y_stag.shiftHalf(1,1);
+
         for (int nvar(0); nvar<MetGridBdyEnd; ++nvar) {
             if (nvar==MetGridBdyVars::U) {
-                ldomain = geom[lev].Domain();
-                ldomain.convert(IntVect(1,0,0));
-                auto ng = lev_new[Vars::xvel].nGrowVect();
-                gdomain = grow(ldomain,ng);
+                bdy_data_xlo[itime][nvar].resize(xlo_plane_x_stag, 1, Arena_Used);
+                bdy_data_xhi[itime][nvar].resize(xhi_plane_x_stag, 1, Arena_Used);
+                bdy_data_ylo[itime][nvar].resize(ylo_plane_x_stag, 1, Arena_Used);
+                bdy_data_yhi[itime][nvar].resize(yhi_plane_x_stag, 1, Arena_Used);
             } else if (nvar==MetGridBdyVars::V) {
-                ldomain = geom[lev].Domain();
-                ldomain.convert(IntVect(0,1,0));
-                auto ng = lev_new[Vars::yvel].nGrowVect();
-                gdomain = grow(ldomain,ng);
+                bdy_data_xlo[itime][nvar].resize(xlo_plane_y_stag, 1, Arena_Used);
+                bdy_data_xhi[itime][nvar].resize(xhi_plane_y_stag, 1, Arena_Used);
+                bdy_data_ylo[itime][nvar].resize(ylo_plane_y_stag, 1, Arena_Used);
+                bdy_data_yhi[itime][nvar].resize(yhi_plane_y_stag, 1, Arena_Used);
             } else {
-                ldomain = geom[lev].Domain();
-                auto ng = lev_new[Vars::cons].nGrowVect();
-                gdomain = grow(ldomain,ng);
+                bdy_data_xlo[itime][nvar].resize(xlo_plane_no_stag, 1, Arena_Used);
+                bdy_data_xhi[itime][nvar].resize(xhi_plane_no_stag, 1, Arena_Used);
+                bdy_data_ylo[itime][nvar].resize(ylo_plane_no_stag, 1, Arena_Used);
+                bdy_data_yhi[itime][nvar].resize(yhi_plane_no_stag, 1, Arena_Used);
             }
-            fabs_for_bcs[itime][nvar].resize(gdomain, 1, Arena_Used);
-            fabs_for_bcs[itime][nvar].template setVal<RunOn::Device>(0.0);
+            bdy_data_xlo[itime][nvar].template setVal<RunOn::Device>(0.0);
+            bdy_data_xhi[itime][nvar].template setVal<RunOn::Device>(0.0);
+            bdy_data_ylo[itime][nvar].template setVal<RunOn::Device>(0.0);
+            bdy_data_yhi[itime][nvar].template setVal<RunOn::Device>(0.0);
         }
     }
 
@@ -337,7 +378,9 @@ ERF::init_from_metgrid (int lev)
                                 NC_yvel_fab, NC_temp_fab, NC_rhum_fab,
                                 NC_pres_fab, p_interp_fab, t_interp_fab,
                                 theta_fab, mxrat_fab,
-                                fabs_for_bcs, mask_c_arr, mask_u_arr, mask_v_arr);
+                                bdy_data_xlo, bdy_data_xhi,
+                                bdy_data_ylo, bdy_data_yhi,
+                                mask_c_arr, mask_u_arr, mask_v_arr);
     } // mf
 
 
@@ -369,6 +412,7 @@ ERF::init_from_metgrid (int lev)
         FArrayBox&      cons_fab = lev_new[Vars::cons][mfi];
         FArrayBox& z_phys_nd_fab = (*z_phys)[mfi];
 
+
         // Fill base state data using origin data (initialization and BC arrays)
         //     p_hse     calculate moist hydrostatic pressure
         //     r_hse     calculate moist hydrostatic density
@@ -378,7 +422,7 @@ ERF::init_from_metgrid (int lev)
         init_base_state_from_metgrid(use_moisture, metgrid_debug_psfc, l_rdOcp,
                                      valid_bx, flag_psfc,
                                      cons_fab, r_hse_fab, p_hse_fab, pi_hse_fab, th_hse_fab,
-                                     z_phys_nd_fab, NC_psfc_fab, fabs_for_bcs);
+                                     z_phys_nd_fab, NC_psfc_fab);
     } // mf
 
     // FillBoundary to populate the internal halo cells
@@ -394,8 +438,17 @@ ERF::init_from_metgrid (int lev)
     //       complete data set; initialized to 0 above.
     for (int itime(0); itime < ntimes; itime++) {
         for (int nvar(0); nvar<MetGridBdyEnd; ++nvar) {
-            ParallelAllReduce::Sum(fabs_for_bcs[itime][nvar].dataPtr(),
-                                   fabs_for_bcs[itime][nvar].size(),
+            ParallelAllReduce::Sum(bdy_data_xlo[itime][nvar].dataPtr(),
+                                   bdy_data_xlo[itime][nvar].size(),
+                                   ParallelContext::CommunicatorAll());
+            ParallelAllReduce::Sum(bdy_data_xhi[itime][nvar].dataPtr(),
+                                   bdy_data_xhi[itime][nvar].size(),
+                                   ParallelContext::CommunicatorAll());
+            ParallelAllReduce::Sum(bdy_data_ylo[itime][nvar].dataPtr(),
+                                   bdy_data_ylo[itime][nvar].size(),
+                                   ParallelContext::CommunicatorAll());
+            ParallelAllReduce::Sum(bdy_data_yhi[itime][nvar].dataPtr(),
+                                   bdy_data_yhi[itime][nvar].size(),
                                    ParallelContext::CommunicatorAll());
         }
     }
@@ -407,129 +460,6 @@ ERF::init_from_metgrid (int lev)
     Print() << "Running with specification width: " << real_set_width
             << " and relaxation width: " << real_width - real_set_width << std::endl;
 #endif
-
-    // Set up boxes for lateral boundary arrays.
-    bdy_data_xlo.resize(ntimes);
-    bdy_data_xhi.resize(ntimes);
-    bdy_data_ylo.resize(ntimes);
-    bdy_data_yhi.resize(ntimes);
-
-    const auto& lo = geom[lev].Domain().loVect();
-    const auto& hi = geom[lev].Domain().hiVect();
-    IntVect plo(lo);
-    IntVect phi(hi);
-
-    plo[0] = lo[0];                     plo[1] = lo[1]; plo[2] = lo[2];
-    phi[0] = lo[0]+real_width-1; phi[1] = hi[1]; phi[2] = hi[2];
-    const Box pbx_xlo(plo, phi);
-    Box xlo_plane_no_stag(pbx_xlo);
-    Box xlo_plane_x_stag = pbx_xlo; xlo_plane_x_stag.shiftHalf(0,-1);
-    Box xlo_plane_y_stag = convert(pbx_xlo, {0, 1, 0});
-
-    plo[0] = hi[0]-real_width+1; plo[1] = lo[1]; plo[2] = lo[2];
-    phi[0] = hi[0];                     phi[1] = hi[1]; phi[2] = hi[2];
-    const Box pbx_xhi(plo, phi);
-    Box xhi_plane_no_stag(pbx_xhi);
-    Box xhi_plane_x_stag = pbx_xhi; xhi_plane_x_stag.shiftHalf(0,1);
-    Box xhi_plane_y_stag = convert(pbx_xhi, {0, 1, 0});
-
-    plo[1] = lo[1];                     plo[0] = lo[0]; plo[2] = lo[2];
-    phi[1] = lo[1]+real_width-1; phi[0] = hi[0]; phi[2] = hi[2];
-    const Box pbx_ylo(plo, phi);
-    Box ylo_plane_no_stag(pbx_ylo);
-    Box ylo_plane_x_stag = convert(pbx_ylo, {1, 0, 0});
-    Box ylo_plane_y_stag = pbx_ylo; ylo_plane_y_stag.shiftHalf(1,-1);
-
-    plo[1] = hi[1]-real_width+1; plo[0] = lo[0]; plo[2] = lo[2];
-    phi[1] = hi[1];                     phi[0] = hi[0]; phi[2] = hi[2];
-    const Box pbx_yhi(plo, phi);
-    Box yhi_plane_no_stag(pbx_yhi);
-    Box yhi_plane_x_stag = convert(pbx_yhi, {1, 0, 0});
-    Box yhi_plane_y_stag = pbx_yhi; yhi_plane_y_stag.shiftHalf(1,1);
-
-    for (int ivar(MetGridBdyVars::U); ivar < MetGridBdyEnd; ivar++) {
-        for (int itime(0); itime < ntimes; itime++) {
-            if (ivar == MetGridBdyVars::U) {
-                bdy_data_xlo[itime].push_back(FArrayBox(xlo_plane_x_stag, 1));
-                bdy_data_xhi[itime].push_back(FArrayBox(xhi_plane_x_stag, 1));
-                bdy_data_ylo[itime].push_back(FArrayBox(ylo_plane_x_stag, 1));
-                bdy_data_yhi[itime].push_back(FArrayBox(yhi_plane_x_stag, 1));
-            } else if (ivar == MetGridBdyVars::V) {
-                bdy_data_xlo[itime].push_back(FArrayBox(xlo_plane_y_stag, 1));
-                bdy_data_xhi[itime].push_back(FArrayBox(xhi_plane_y_stag, 1));
-                bdy_data_ylo[itime].push_back(FArrayBox(ylo_plane_y_stag, 1));
-                bdy_data_yhi[itime].push_back(FArrayBox(yhi_plane_y_stag, 1));
-            } else if (ivar == MetGridBdyVars::T) {
-                bdy_data_xlo[itime].push_back(FArrayBox(xlo_plane_no_stag, 1));
-                bdy_data_xhi[itime].push_back(FArrayBox(xhi_plane_no_stag, 1));
-                bdy_data_ylo[itime].push_back(FArrayBox(ylo_plane_no_stag, 1));
-                bdy_data_yhi[itime].push_back(FArrayBox(yhi_plane_no_stag, 1));
-            } else if (ivar == MetGridBdyVars::QV) {
-                bdy_data_xlo[itime].push_back(FArrayBox(xlo_plane_no_stag, 1));
-                bdy_data_xhi[itime].push_back(FArrayBox(xhi_plane_no_stag, 1));
-                bdy_data_ylo[itime].push_back(FArrayBox(ylo_plane_no_stag, 1));
-                bdy_data_yhi[itime].push_back(FArrayBox(yhi_plane_no_stag, 1));
-            } else {
-#ifndef AMREX_USE_GPU
-                Print() << "Unexpected ivar " << ivar << std::endl;
-#endif
-                Abort("See Initialization/ERF_init_from_metgrid.cpp");
-            }
-        } // itime
-    } // ivar
-
-    // Earlier we processed the entire domain at each time from the met_em files, even though
-    // we only need the whole domain processed at initialization and the lateral boundaries
-    // at subsequent times. We can optimize this later if needed. For now, we need to fill
-    // the lateral boundary arrays using the info set aside earlier.
-    Box xlo_plane, xhi_plane, ylo_plane, yhi_plane;
-    for (int itime(0); itime < ntimes; itime++) {
-
-        for (int ivar(MetGridBdyVars::U); ivar < MetGridBdyEnd; ivar++) {
-
-            auto xlo_arr = bdy_data_xlo[itime][ivar].array();
-            auto xhi_arr = bdy_data_xhi[itime][ivar].array();
-            auto ylo_arr = bdy_data_ylo[itime][ivar].array();
-            auto yhi_arr = bdy_data_yhi[itime][ivar].array();
-            const Array4<Real const>& fabs_for_bcs_arr = fabs_for_bcs[itime][ivar].const_array();
-
-            if (ivar == MetGridBdyVars::U) {
-                xlo_plane = xlo_plane_x_stag; xhi_plane = xhi_plane_x_stag;
-                ylo_plane = ylo_plane_x_stag; yhi_plane = yhi_plane_x_stag;
-            } else if (ivar == MetGridBdyVars::V) {
-                xlo_plane = xlo_plane_y_stag; xhi_plane = xhi_plane_y_stag;
-                ylo_plane = ylo_plane_y_stag; yhi_plane = yhi_plane_y_stag;
-            } else if (ivar == MetGridBdyVars::T) {
-                xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
-                ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
-            } else if (ivar == MetGridBdyVars::QV) {
-                xlo_plane = xlo_plane_no_stag; xhi_plane = xhi_plane_no_stag;
-                ylo_plane = ylo_plane_no_stag; yhi_plane = yhi_plane_no_stag;
-            } // MetGridBdyVars::QV
-
-            // west boundary
-            ParallelFor(xlo_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
-            {
-                xlo_arr(i,j,k,0) = fabs_for_bcs_arr(i,j,k);
-            });
-            // xvel at east boundary
-            ParallelFor(xhi_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
-            {
-                xhi_arr(i,j,k,0) = fabs_for_bcs_arr(i,j,k);
-            });
-            // xvel at south boundary
-            ParallelFor(ylo_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
-            {
-                ylo_arr(i,j,k,0) = fabs_for_bcs_arr(i,j,k);
-            });
-            // xvel at north boundary
-            ParallelFor(yhi_plane, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept
-            {
-                yhi_arr(i,j,k,0) = fabs_for_bcs_arr(i,j,k);
-            });
-
-        } // ivar
-    } // itime
 }
 
 /**
@@ -645,7 +575,10 @@ init_state_from_metgrid (const bool use_moisture,
                          FArrayBox& t_interp_fab,
                          FArrayBox& theta_fab,
                          FArrayBox& mxrat_fab,
-                         Vector<Vector<FArrayBox>>& fabs_for_bcs,
+                         Vector<Vector<FArrayBox>>& fabs_for_bcs_xlo,
+                         Vector<Vector<FArrayBox>>& fabs_for_bcs_xhi,
+                         Vector<Vector<FArrayBox>>& fabs_for_bcs_ylo,
+                         Vector<Vector<FArrayBox>>& fabs_for_bcs_yhi,
                          const Array4<const int>& mask_c_arr,
                          const Array4<const int>& mask_u_arr,
                          const Array4<const int>& mask_v_arr)
@@ -669,8 +602,16 @@ init_state_from_metgrid (const bool use_moisture,
         auto const orig_data = NC_xvel_fab[itime].const_array();
         auto const orig_z    = NC_ght_fab[itime].const_array();
         auto       new_data  = x_vel_fab.array();
-        auto       bc_data   = fabs_for_bcs[itime][MetGridBdyVars::U].array();
         auto const new_z     = z_phys_nd_fab.const_array();
+
+        Box bx_xlo = fabs_for_bcs_xlo[itime][MetGridBdyVars::U].box();
+        Box bx_xhi = fabs_for_bcs_xhi[itime][MetGridBdyVars::U].box();
+        Box bx_ylo = fabs_for_bcs_ylo[itime][MetGridBdyVars::U].box();
+        Box bx_yhi = fabs_for_bcs_yhi[itime][MetGridBdyVars::U].box();
+        auto bc_data_xlo = fabs_for_bcs_xlo[itime][MetGridBdyVars::U].array();
+        auto bc_data_xhi = fabs_for_bcs_xhi[itime][MetGridBdyVars::U].array();
+        auto bc_data_ylo = fabs_for_bcs_ylo[itime][MetGridBdyVars::U].array();
+        auto bc_data_yhi = fabs_for_bcs_yhi[itime][MetGridBdyVars::U].array();
 
         int kmax = ubound(tbxu).z;
 
@@ -678,21 +619,28 @@ init_state_from_metgrid (const bool use_moisture,
         {
             if (metgrid_debug_quiescent) { // Debugging option to run quiescent.
                 for (int k(0); k<=kmax; k++) {
-                    if (mask_u_arr(i,j,k)) bc_data(i,j,k,0) = 0.0;
+                  if (mask_u_arr(i,j,k) && bx_xlo.contains(i,j,k)) bc_data_xlo(i,j,k,0) = 0.0;
+                  if (mask_u_arr(i,j,k) && bx_xhi.contains(i,j,k)) bc_data_xhi(i,j,k,0) = 0.0;
+                  if (mask_u_arr(i,j,k) && bx_ylo.contains(i,j,k)) bc_data_ylo(i,j,k,0) = 0.0;
+                  if (mask_u_arr(i,j,k) && bx_yhi.contains(i,j,k)) bc_data_yhi(i,j,k,0) = 0.0;
                     if (itime == 0) new_data(i,j,k,0) = 0.0;
                 }
             } else if (metgrid_basic_linear) { // Linear interpolation with no quality control.
                 for (int k(0); k<=kmax; k++) {
                     Real Interp_Val = interpolate_column_metgrid_linear(i,j,k,'X',0,orig_z,orig_data,new_z);
-                    if (mask_u_arr(i,j,k)) bc_data(i,j,k,0) = Interp_Val;
+                    if (mask_u_arr(i,j,k) && bx_xlo.contains(i,j,k)) bc_data_xlo(i,j,k,0) = Interp_Val;
+                    if (mask_u_arr(i,j,k) && bx_xhi.contains(i,j,k)) bc_data_xhi(i,j,k,0) = Interp_Val;
+                    if (mask_u_arr(i,j,k) && bx_ylo.contains(i,j,k)) bc_data_ylo(i,j,k,0) = Interp_Val;
+                    if (mask_u_arr(i,j,k) && bx_yhi.contains(i,j,k)) bc_data_yhi(i,j,k,0) = Interp_Val;
                     if (itime == 0) new_data(i,j,k,0) = Interp_Val;
                 }
             } else { // Vertical interpolation and quality control similar to that from WRF.
                 interpolate_column_metgrid(metgrid_use_below_sfc, metgrid_use_sfc, metgrid_exp_interp,
                                            metgrid_retain_sfc, metgrid_proximity, metgrid_order,
                                            metgrid_force_sfc_k, i, j, 0, itime, 'U', 'X',
-                                           orig_z, orig_data, new_z, new_data,
-                                           true, bc_data, mask_u_arr);
+                                           orig_z, orig_data, new_z, new_data, true,
+                                           bc_data_xlo, bc_data_xhi, bc_data_ylo, bc_data_yhi,
+                                           bx_xlo, bx_xhi, bx_ylo, bx_yhi, mask_u_arr);
             }
         });
         }
@@ -710,8 +658,16 @@ init_state_from_metgrid (const bool use_moisture,
         auto const orig_data = NC_yvel_fab[itime].const_array();
         auto const orig_z    = NC_ght_fab[itime].const_array();
         auto       new_data  = y_vel_fab.array();
-        auto       bc_data   = fabs_for_bcs[itime][MetGridBdyVars::V].array();
         auto const new_z     = z_phys_nd_fab.const_array();
+
+        Box bx_xlo = fabs_for_bcs_xlo[itime][MetGridBdyVars::V].box();
+        Box bx_xhi = fabs_for_bcs_xhi[itime][MetGridBdyVars::V].box();
+        Box bx_ylo = fabs_for_bcs_ylo[itime][MetGridBdyVars::V].box();
+        Box bx_yhi = fabs_for_bcs_yhi[itime][MetGridBdyVars::V].box();
+        auto bc_data_xlo = fabs_for_bcs_xlo[itime][MetGridBdyVars::V].array();
+        auto bc_data_xhi = fabs_for_bcs_xhi[itime][MetGridBdyVars::V].array();
+        auto bc_data_ylo = fabs_for_bcs_ylo[itime][MetGridBdyVars::V].array();
+        auto bc_data_yhi = fabs_for_bcs_yhi[itime][MetGridBdyVars::V].array();
 
         int kmax = ubound(tbxv).z;
 
@@ -719,21 +675,28 @@ init_state_from_metgrid (const bool use_moisture,
         {
             if (metgrid_debug_quiescent) { // Debugging option to run quiescent.
                 for (int k(0); k<=kmax; k++) {
-                    if (mask_v_arr(i,j,k)) bc_data(i,j,k,0) = 0.0;
+                    if (mask_v_arr(i,j,k) && bx_xlo.contains(i,j,k)) bc_data_xlo(i,j,k,0) = 0.0;
+                    if (mask_v_arr(i,j,k) && bx_xhi.contains(i,j,k)) bc_data_xhi(i,j,k,0) = 0.0;
+                    if (mask_v_arr(i,j,k) && bx_ylo.contains(i,j,k)) bc_data_ylo(i,j,k,0) = 0.0;
+                    if (mask_v_arr(i,j,k) && bx_yhi.contains(i,j,k)) bc_data_yhi(i,j,k,0) = 0.0;
                     if (itime == 0) new_data(i,j,k,0) = 0.0;
                 }
             } else if (metgrid_basic_linear) { // Linear interpolation with no quality control.
                 for (int k(0); k<=kmax; k++) {
                     Real Interp_Val = interpolate_column_metgrid_linear(i,j,k,'Y',0,orig_z,orig_data,new_z);
-                    if (mask_v_arr(i,j,k)) bc_data(i,j,k,0) = Interp_Val;
+                    if (mask_v_arr(i,j,k) && bx_xlo.contains(i,j,k)) bc_data_xlo(i,j,k,0) = Interp_Val;
+                    if (mask_v_arr(i,j,k) && bx_xhi.contains(i,j,k)) bc_data_xhi(i,j,k,0) = Interp_Val;
+                    if (mask_v_arr(i,j,k) && bx_ylo.contains(i,j,k)) bc_data_ylo(i,j,k,0) = Interp_Val;
+                    if (mask_v_arr(i,j,k) && bx_yhi.contains(i,j,k)) bc_data_yhi(i,j,k,0) = Interp_Val;
                     if (itime == 0) new_data(i,j,k,0) = Interp_Val;
                 }
             } else {
                 interpolate_column_metgrid(metgrid_use_below_sfc, metgrid_use_sfc, metgrid_exp_interp,
                                            metgrid_retain_sfc, metgrid_proximity, metgrid_order,
                                            metgrid_force_sfc_k, i, j, 0, itime, 'V', 'Y',
-                                           orig_z, orig_data, new_z, new_data,
-                                           true, bc_data, mask_v_arr);
+                                           orig_z, orig_data, new_z, new_data, true,
+                                           bc_data_xlo, bc_data_xhi, bc_data_ylo, bc_data_yhi,
+                                           bx_xlo, bx_xhi, bx_ylo, bx_yhi, mask_v_arr);
             }
         });
         }
@@ -783,8 +746,16 @@ init_state_from_metgrid (const bool use_moisture,
             auto const orig_data = theta_fab.const_array();
             auto const orig_z    = NC_ght_fab[itime].const_array();
             auto       new_data  = state_fab.array();
-            auto       bc_data   = fabs_for_bcs[itime][MetGridBdyVars::T].array();
             auto const new_z     = z_phys_nd_fab.const_array();
+
+            Box bx_xlo = fabs_for_bcs_xlo[itime][MetGridBdyVars::T].box();
+            Box bx_xhi = fabs_for_bcs_xhi[itime][MetGridBdyVars::T].box();
+            Box bx_ylo = fabs_for_bcs_ylo[itime][MetGridBdyVars::T].box();
+            Box bx_yhi = fabs_for_bcs_yhi[itime][MetGridBdyVars::T].box();
+            auto bc_data_xlo = fabs_for_bcs_xlo[itime][MetGridBdyVars::T].array();
+            auto bc_data_xhi = fabs_for_bcs_xhi[itime][MetGridBdyVars::T].array();
+            auto bc_data_ylo = fabs_for_bcs_ylo[itime][MetGridBdyVars::T].array();
+            auto bc_data_yhi = fabs_for_bcs_yhi[itime][MetGridBdyVars::T].array();
 
             int kmax = amrex::ubound(tbxc).z;
 
@@ -792,21 +763,28 @@ init_state_from_metgrid (const bool use_moisture,
             {
                 if (metgrid_debug_isothermal) { // Debugging option to run isothermal.
                     for (int k(0); k<=kmax; k++) {
-                        if (mask_c_arr(i,j,k)) bc_data(i,j,k,0)  = 300.0;
+                        if (mask_c_arr(i,j,k) && bx_xlo.contains(i,j,k)) bc_data_xlo(i,j,k,0) = 300.0;
+                        if (mask_c_arr(i,j,k) && bx_xhi.contains(i,j,k)) bc_data_xhi(i,j,k,0) = 300.0;
+                        if (mask_c_arr(i,j,k) && bx_ylo.contains(i,j,k)) bc_data_ylo(i,j,k,0) = 300.0;
+                        if (mask_c_arr(i,j,k) && bx_yhi.contains(i,j,k)) bc_data_yhi(i,j,k,0) = 300.0;
                         if (itime == 0) new_data(i,j,k,RhoTheta_comp) = 300.0;
                     }
                 } else if (metgrid_basic_linear) { // Linear interpolation with no quality control.
                     for (int k(0); k<=kmax; k++) {
                         Real Interp_Val = interpolate_column_metgrid_linear(i,j,k,'M',0,orig_z,orig_data,new_z);
-                        if (mask_c_arr(i,j,k)) bc_data(i,j,k,0)  = Interp_Val;
+                        if (mask_c_arr(i,j,k) && bx_xlo.contains(i,j,k)) bc_data_xlo(i,j,k,0) = Interp_Val;
+                        if (mask_c_arr(i,j,k) && bx_xhi.contains(i,j,k)) bc_data_xhi(i,j,k,0) = Interp_Val;
+                        if (mask_c_arr(i,j,k) && bx_ylo.contains(i,j,k)) bc_data_ylo(i,j,k,0) = Interp_Val;
+                        if (mask_c_arr(i,j,k) && bx_yhi.contains(i,j,k)) bc_data_yhi(i,j,k,0) = Interp_Val;
                         if (itime == 0) new_data(i,j,k,RhoTheta_comp) = Interp_Val;
                     }
                 } else { // Vertical interpolation and quality control similar to that from WRF.
                     interpolate_column_metgrid(metgrid_use_below_sfc, metgrid_use_sfc, metgrid_exp_interp,
                                                metgrid_retain_sfc, metgrid_proximity, metgrid_order,
                                                metgrid_force_sfc_k, i, j, RhoTheta_comp, itime, 'T', 'M',
-                                               orig_z, orig_data, new_z, new_data,
-                                               true, bc_data, mask_c_arr);
+                                               orig_z, orig_data, new_z, new_data, true,
+                                               bc_data_xlo, bc_data_xhi, bc_data_ylo, bc_data_yhi,
+                                               bx_xlo, bx_xhi, bx_ylo, bx_yhi, mask_c_arr);
                 }
             });
             }
@@ -823,7 +801,9 @@ init_state_from_metgrid (const bool use_moisture,
             auto const orig_z    = NC_ght_fab[itime].const_array();
             auto       new_data  = p_interp_fab.array();
             auto const new_z     = z_phys_nd_fab.const_array();
-            const amrex::Array4<amrex::Real> bc_data_unused;
+
+            Box bx_xlo, bx_xhi, bx_ylo, bx_yhi;
+            const amrex::Array4<amrex::Real> bc_data_xlo, bc_data_xhi, bc_data_ylo, bc_data_yhi;
 
             int kmax = ubound(tbxc).z;
 
@@ -840,8 +820,9 @@ init_state_from_metgrid (const bool use_moisture,
                     interpolate_column_metgrid(metgrid_use_below_sfc, metgrid_use_sfc, true,
                                                metgrid_retain_sfc, metgrid_proximity, metgrid_order,
                                                metgrid_force_sfc_k, i, j, 0, 0, 'T', 'M',
-                                               orig_z, orig_data, new_z, new_data,
-                                               false, bc_data_unused, mask_c_arr);
+                                               orig_z, orig_data, new_z, new_data, false,
+                                               bc_data_xlo, bc_data_xhi, bc_data_ylo, bc_data_yhi,
+                                               bx_xlo, bx_xhi, bx_ylo, bx_yhi, mask_c_arr);
                 }
             });
             }
@@ -856,7 +837,9 @@ init_state_from_metgrid (const bool use_moisture,
             auto const orig_z    = NC_ght_fab[itime].const_array();
             auto       new_data  = t_interp_fab.array();
             auto const new_z     = z_phys_nd_fab.const_array();
-            const amrex::Array4<amrex::Real> bc_data_unused;
+
+            Box bx_xlo, bx_xhi, bx_ylo, bx_yhi;
+            const amrex::Array4<amrex::Real> bc_data_xlo, bc_data_xhi, bc_data_ylo, bc_data_yhi;
 
             int kmax = ubound(tbxc).z;
 
@@ -874,8 +857,9 @@ init_state_from_metgrid (const bool use_moisture,
                     interpolate_column_metgrid(metgrid_use_below_sfc, metgrid_use_sfc, false,
                                                metgrid_retain_sfc, metgrid_proximity, metgrid_order,
                                                metgrid_force_sfc_k, i, j, 0, 0, 'T', 'M',
-                                               orig_z, orig_data, new_z, new_data,
-                                               false, bc_data_unused, mask_c_arr);
+                                               orig_z, orig_data, new_z, new_data, false,
+                                               bc_data_xlo, bc_data_xhi, bc_data_ylo, bc_data_yhi,
+                                               bx_xlo, bx_xhi, bx_ylo, bx_yhi, mask_c_arr);
                 }
             });
             }
@@ -884,13 +868,24 @@ init_state_from_metgrid (const bool use_moisture,
             auto const temp  = t_interp_fab.const_array();
             auto const pres  = p_interp_fab.const_array();
             auto       new_data = state_fab.array();
-            auto       bc_data   = fabs_for_bcs[itime][MetGridBdyVars::T].array();
+
+            Box bx_xlo = fabs_for_bcs_xlo[itime][MetGridBdyVars::T].box();
+            Box bx_xhi = fabs_for_bcs_xhi[itime][MetGridBdyVars::T].box();
+            Box bx_ylo = fabs_for_bcs_ylo[itime][MetGridBdyVars::T].box();
+            Box bx_yhi = fabs_for_bcs_yhi[itime][MetGridBdyVars::T].box();
+            auto bc_data_xlo = fabs_for_bcs_xlo[itime][MetGridBdyVars::T].array();
+            auto bc_data_xhi = fabs_for_bcs_xhi[itime][MetGridBdyVars::T].array();
+            auto bc_data_ylo = fabs_for_bcs_ylo[itime][MetGridBdyVars::T].array();
+            auto bc_data_yhi = fabs_for_bcs_yhi[itime][MetGridBdyVars::T].array();
 
             ParallelFor(tbxc, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
                 Real Calc_Val = getThgivenPandT(temp(i,j,k),pres(i,j,k),l_rdOcp);
                 if (metgrid_debug_isothermal) Calc_Val = 300.0; // Debugging option to run isothermal.
-                if (mask_c_arr(i,j,k)) bc_data(i,j,k,0)  = Calc_Val;
+                if (mask_c_arr(i,j,k) && bx_xlo.contains(i,j,k)) bc_data_xlo(i,j,k,0) = Calc_Val;
+                if (mask_c_arr(i,j,k) && bx_xhi.contains(i,j,k)) bc_data_xhi(i,j,k,0) = Calc_Val;
+                if (mask_c_arr(i,j,k) && bx_ylo.contains(i,j,k)) bc_data_ylo(i,j,k,0) = Calc_Val;
+                if (mask_c_arr(i,j,k) && bx_yhi.contains(i,j,k)) bc_data_yhi(i,j,k,0) = Calc_Val;
                 if (itime == 0) new_data(i,j,k,RhoTheta_comp) = Calc_Val;
             });
             }
@@ -928,8 +923,16 @@ init_state_from_metgrid (const bool use_moisture,
                 auto const orig_data = mxrat_fab.const_array();
                 auto const orig_z    = NC_ght_fab[itime].const_array();
                 auto       new_data  = state_fab.array();
-                auto       bc_data   = fabs_for_bcs[itime][MetGridBdyVars::QV].array();
                 auto const new_z     = z_phys_nd_fab.const_array();
+
+                Box bx_xlo = fabs_for_bcs_xlo[itime][MetGridBdyVars::QV].box();
+                Box bx_xhi = fabs_for_bcs_xhi[itime][MetGridBdyVars::QV].box();
+                Box bx_ylo = fabs_for_bcs_ylo[itime][MetGridBdyVars::QV].box();
+                Box bx_yhi = fabs_for_bcs_yhi[itime][MetGridBdyVars::QV].box();
+                auto bc_data_xlo = fabs_for_bcs_xlo[itime][MetGridBdyVars::QV].array();
+                auto bc_data_xhi = fabs_for_bcs_xhi[itime][MetGridBdyVars::QV].array();
+                auto bc_data_ylo = fabs_for_bcs_ylo[itime][MetGridBdyVars::QV].array();
+                auto bc_data_yhi = fabs_for_bcs_yhi[itime][MetGridBdyVars::QV].array();
 
                 int kmax = ubound(tbxc).z;
 
@@ -938,21 +941,28 @@ init_state_from_metgrid (const bool use_moisture,
                 {
                     if (metgrid_debug_dry) { // Debugging option to run dry.
                         for (int k(0); k<=kmax; k++) {
-                            if (mask_c_arr(i,j,k)) bc_data(i,j,k,0) = 0.0;
+                            if (mask_c_arr(i,j,k) && bx_xlo.contains(i,j,k)) bc_data_xlo(i,j,k,0) = 0.0;
+                            if (mask_c_arr(i,j,k) && bx_xhi.contains(i,j,k)) bc_data_xhi(i,j,k,0) = 0.0;
+                            if (mask_c_arr(i,j,k) && bx_ylo.contains(i,j,k)) bc_data_ylo(i,j,k,0) = 0.0;
+                            if (mask_c_arr(i,j,k) && bx_yhi.contains(i,j,k)) bc_data_yhi(i,j,k,0) = 0.0;
                             if (itime == 0) new_data(i,j,k,state_indx)   = 0.0;
                         }
                     } else if (metgrid_basic_linear) { // Linear interpolation with no quality control.
                         for (int k(0); k<=kmax; k++) {
                             Real Interp_Val  = interpolate_column_metgrid_linear(i,j,k,'M',0,orig_z,orig_data,new_z);
-                            if (mask_c_arr(i,j,k)) bc_data(i,j,k,0) = Interp_Val;
+                            if (mask_c_arr(i,j,k) && bx_xlo.contains(i,j,k)) bc_data_xlo(i,j,k,0) = Interp_Val;
+                            if (mask_c_arr(i,j,k) && bx_xhi.contains(i,j,k)) bc_data_xhi(i,j,k,0) = Interp_Val;
+                            if (mask_c_arr(i,j,k) && bx_ylo.contains(i,j,k)) bc_data_ylo(i,j,k,0) = Interp_Val;
+                            if (mask_c_arr(i,j,k) && bx_yhi.contains(i,j,k)) bc_data_yhi(i,j,k,0) = Interp_Val;
                             if (itime == 0) new_data(i,j,k,state_indx)   = Interp_Val;
                         }
                     } else { // Vertical interpolation and quality control similar to that from WRF.
                         interpolate_column_metgrid(metgrid_use_below_sfc, metgrid_use_sfc, metgrid_exp_interp,
                                                    metgrid_retain_sfc, metgrid_proximity, metgrid_order,
                                                    metgrid_force_sfc_k, i, j, state_indx, itime, 'Q', 'M',
-                                                   orig_z, orig_data, new_z, new_data,
-                                                   true, bc_data, mask_c_arr);
+                                                   orig_z, orig_data, new_z, new_data, true,
+                                                   bc_data_xlo, bc_data_xhi, bc_data_ylo, bc_data_yhi,
+                                                   bx_xlo, bx_xhi, bx_ylo, bx_yhi, mask_c_arr);
                     }
                 });
             }
@@ -991,8 +1001,7 @@ init_base_state_from_metgrid (const bool use_moisture,
                               FArrayBox& pi_hse_fab,
                               FArrayBox& th_hse_fab,
                               FArrayBox& z_phys_cc_fab,
-                              const Vector<FArrayBox>& NC_psfc_fab,
-                              Vector<Vector<FArrayBox>>& fabs_for_bcs)
+                              const Vector<FArrayBox>& NC_psfc_fab)
 {
     int RhoQ_comp = RhoQ1_comp;
     int kmax = ubound(valid_bx).z;
@@ -1018,12 +1027,6 @@ init_base_state_from_metgrid (const bool use_moisture,
     Gpu::copy(Gpu::hostToDevice, flag_psfc.begin(), flag_psfc.end(), flag_psfc_d.begin());
     int* flag_psfc_vec = flag_psfc_d.data();
 
-    // Define the arena to be used for data allocation
-    Arena* Arena_Used = The_Arena();
-#ifdef AMREX_USE_GPU
-    // Inside MFiter use async arena
-    Arena_Used = The_Async_Arena();
-#endif
     // Expose for copy to GPU
     Real grav = CONST_GRAV;
 
@@ -1205,110 +1208,6 @@ init_base_state_from_metgrid (const bool use_moisture,
             th_hse_arr(i,j,k) = th_hse_arr(i,j,k-1);
         });
     }
-
-    int ntimes = NC_psfc_fab.size();
-    for (int itime(0); itime<ntimes; itime++) {
-        FArrayBox p_hse_bcs_fab;
-        p_hse_bcs_fab.resize(state_fab.box(), 1, Arena_Used);
-        auto psfc_flag = flag_psfc_vec[itime];
-
-        // ********************************************************
-        // calculate density and pressure for boundary conditions.
-        // ********************************************************
-        Box valid_bx2d = valid_bx;
-        valid_bx2d.setRange(2,0);
-        auto const orig_psfc = NC_psfc_fab[itime].const_array();
-        auto const     new_z = z_phys_cc_fab.const_array();
-        auto       Theta_arr = fabs_for_bcs[itime][MetGridBdyVars::T].array();
-        auto           Q_arr = (use_moisture ) ? fabs_for_bcs[itime][MetGridBdyVars::QV].array() : Array4<Real>{};
-        auto       p_hse_arr = p_hse_bcs_fab.array();
-
-        ParallelFor(valid_bx2d, [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
-        {
-            const int maxiter = 10;
-            const amrex::Real tol = 1.0e-10;
-
-            // Low and Hi column variables
-            Real psurf;
-            Real z_lo,   z_hi;
-            Real p_lo,   p_hi;
-            Real qv_lo, qv_hi;
-            Real rd_lo, rd_hi;
-            Real thetad_lo, thetad_hi;
-
-            // Calculate or use pressure at the surface.
-            if (metgrid_debug_psfc) {
-                psurf = std::pow(10, 5);
-            } else if (psfc_flag  == 1) {
-                psurf = orig_psfc(i,j,0);
-            } else {
-                z_lo     = new_z(i,j,0);
-                Real t_0 = 290.0; // WRF's model_config_rec%base_temp
-                Real a   = 50.0;  // WRF's model_config_rec%base_lapse
-                psurf = p_0*exp(-t_0/a+std::pow((std::pow(t_0/a, 2.)-2.0*grav*z_lo/(a*R_d)), 0.5));
-            }
-
-            // Iterations for the first CC point that is 1/2 dz off the surface
-            {
-                z_lo      = new_z(i,j,0);
-                qv_lo     = (use_moisture) ? Q_arr(i,j,0) : 0.0;
-                rd_lo     = 0.0; // initial guess
-                thetad_lo = Theta_arr(i,j,0);
-                Real half_dz = z_lo;
-                Real qvf     = 1.0+(R_v/R_d)*qv_lo;
-                Real thetam  = thetad_lo*qvf;
-                for (int it(0); it<maxiter; it++) {
-                    p_lo = psurf-half_dz*rd_lo*(1.0+qv_lo)*grav;
-                    if (p_lo < 0.0) p_lo = 0.0;
-                    rd_lo = (p_0/(R_d*thetam))*std::pow(p_lo/p_0, iGamma);
-                } // it
-                p_hse_arr(i,j,0) =  p_lo;
-            }
-
-            // Iterations for k \in [1 kmax]
-            for (int k(1); k<=kmax; k++) {
-                // Known hi data
-                z_hi  = new_z(i,j,k);
-                qv_hi = (use_moisture) ? Q_arr(i,j,k) : 0.0;
-                thetad_hi = Theta_arr(i,j,k);
-
-                // Initial guesses for hi data
-                 p_hi = p_lo;
-                rd_hi = getRhogivenThetaPress(thetad_hi,
-                                              p_hi,
-                                              R_d/Cp_d,
-                                              qv_hi);
-
-                // Vertical grid spacing
-                Real dz = z_hi - z_lo;
-
-                // Establish known constant
-                Real rho_tot_lo = rd_lo * (1. + qv_lo);
-                Real C = -p_lo + 0.5*rho_tot_lo*grav*dz;
-
-                // Initial residual
-                Real rho_tot_hi = rd_hi * (1. + qv_hi);
-                Real F = p_hi + 0.5*rho_tot_hi*grav*dz + C;
-
-                // Do iterations
-                if (std::abs(F)>tol) HSEutils::Newton_Raphson_hse(tol, R_d/Cp_d, dz,
-                                                                  grav, C, thetad_hi,
-                                                                  qv_hi, qv_hi, p_hi,
-                                                                  rd_hi, F);
-
-                // Copy solution to base state
-                p_hse_arr(i,j,k) =  p_hi;
-
-                // Copy hi to lo
-                z_lo  = z_hi;
-                p_lo  = p_hi;
-                qv_lo = qv_hi;
-                rd_lo = rd_hi;
-                thetad_lo = thetad_hi;
-            }
-
-        });
-    } // itime
 }
 
 

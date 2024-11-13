@@ -79,7 +79,10 @@ init_state_from_metgrid (const bool use_moisture,
                          amrex::FArrayBox& t_interp_fab,
                          amrex::FArrayBox& theta_fab,
                          amrex::FArrayBox& mxrat_fab,
-                         amrex::Vector<amrex::Vector<amrex::FArrayBox>>& fabs_for_bcs,
+                         amrex::Vector<amrex::Vector<amrex::FArrayBox>>& fabs_for_bcs_xlo,
+                         amrex::Vector<amrex::Vector<amrex::FArrayBox>>& fabs_for_bcs_xhi,
+                         amrex::Vector<amrex::Vector<amrex::FArrayBox>>& fabs_for_bcs_ylo,
+                         amrex::Vector<amrex::Vector<amrex::FArrayBox>>& fabs_for_bcs_yhi,
                          const amrex::Array4<const int>& mask_c_arr,
                          const amrex::Array4<const int>& mask_u_arr,
                          const amrex::Array4<const int>& mask_v_arr);
@@ -106,8 +109,7 @@ init_base_state_from_metgrid (const bool use_moisture,
                               amrex::FArrayBox& pi_hse_fab,
                               amrex::FArrayBox& th_hse_fab,
                               amrex::FArrayBox& z_phys_cc_fab,
-                              const amrex::Vector<amrex::FArrayBox>& NC_psfc_fab,
-                              amrex::Vector<amrex::Vector<amrex::FArrayBox>>& fabs_for_bcs);
+                              const amrex::Vector<amrex::FArrayBox>& NC_psfc_fab);
 
 AMREX_FORCE_INLINE
 AMREX_GPU_DEVICE
@@ -162,8 +164,9 @@ lagrange_setup (char var_type,
     int vboundb = 4;
     int vboundt = 0;
 
+#ifndef AMREX_USE_GPU
     bool debug = false;
-//    if ((i == 391) && (j == 3)) debug = true;
+#endif
 
     for (int new_k=0; new_k < new_n; new_k++) {
 #ifndef AMREX_USE_GPU
@@ -437,7 +440,14 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
                             const amrex::Array4<amrex::Real const>& new_z_full,
                             const amrex::Array4<amrex::Real>& new_data_full,
                             const bool& update_bc_data,
-                            const amrex::Array4<amrex::Real>& bc_data_full,
+                            const amrex::Array4<amrex::Real>& bc_data_xlo,
+                            const amrex::Array4<amrex::Real>& bc_data_xhi,
+                            const amrex::Array4<amrex::Real>& bc_data_ylo,
+                            const amrex::Array4<amrex::Real>& bc_data_yhi,
+                            const amrex::Box& bx_xlo,
+                            const amrex::Box& bx_xhi,
+                            const amrex::Box& bx_ylo,
+                            const amrex::Box& bx_yhi,
                             const amrex::Array4<const int>& mask)
 {
     // Here we closely follow WRF's vert_interp from
@@ -729,7 +739,10 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
 
     // Save the interpolated data.
     for (int k=0; k < kmax_new; k++) {
-        if ((mask(i,j,k)) && (update_bc_data)) bc_data_full(i,j,k,0) = new_data[k];
+        if (mask(i,j,k) && update_bc_data && bx_xlo.contains(i,j,k)) bc_data_xlo(i,j,k,0) = new_data[k];
+        if (mask(i,j,k) && update_bc_data && bx_xhi.contains(i,j,k)) bc_data_xhi(i,j,k,0) = new_data[k];
+        if (mask(i,j,k) && update_bc_data && bx_ylo.contains(i,j,k)) bc_data_ylo(i,j,k,0) = new_data[k];
+        if (mask(i,j,k) && update_bc_data && bx_yhi.contains(i,j,k)) bc_data_yhi(i,j,k,0) = new_data[k];
         if (itime == 0) new_data_full(i,j,k,src_comp) = new_data[k];
     }
 
