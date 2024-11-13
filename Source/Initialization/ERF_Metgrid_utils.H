@@ -687,14 +687,6 @@ interpolate_column_metgrid (const bool& metgrid_use_below_sfc,
         calc_p_isothermal(ordered_z_p[k], ordered_p_p[k]);
     }
 
-    int size = 0;
-    amrex::Real p_tmp = ordered_p[ksta];
-    for (int k=ksta+1; k <= kend; k++) {
-        if ((p_tmp-ordered_p_p[k]) > metgrid_proximity) {
-            size++;
-            p_tmp = ordered_p_p[k];
-        }
-    }
     int new_n = 0;
     int zap_final = 0;
     amrex::GpuArray<amrex::Real,256> final_z;
