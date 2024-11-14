@@ -35,6 +35,10 @@ ERF::init_from_metgrid (int lev)
     // At least two met_em files are necessary to calculate tendency terms.
     AMREX_ALWAYS_ASSERT(ntimes >= 2);
 
+    // At least three points are necessary if there is a relaxation zone.
+    if (real_width > real_set_width)
+        AMREX_ALWAYS_ASSERT(real_width-real_set_width >= 3);
+
     // Size the SST and LANDMASK
       sst_lev[lev].resize(ntimes);
     lmask_lev[lev].resize(ntimes);
