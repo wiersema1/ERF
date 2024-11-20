@@ -413,6 +413,13 @@ the number of level-0 steps taken equals 1000, whichever comes first.
 Time Step
 =========
 
+The solver timestep can be fixed by the user or computed dynamically at each timestep based on the user-specified CFL
+number --- i.e., adaptive time stepping. For the compressible equations, the timestep calculation uses the acoustic CFL constraint.
+We note that when using implicit substepping, the vertical mesh spacing does not appear in the time step calculation.
+The number of acoustic sub-steps per timestep can also be specified by the user as a fixed value or by specifying the
+number of substeps per RK stage.  For the anelastic equations, the timestep calculation uses the advective CFL constraint,
+which means it is determined by the fluid speed rather than the sound speed and thus allows much larger timesteps.
+
 .. _list-of-parameters-6:
 
 List of Parameters
@@ -1261,7 +1268,7 @@ methods for defining how the terrain-fitted coordinates given the topography:
 
 - Basic Terrain Following (BTF):
     The influence of the terrain decreases linearly with height.
-- Smoothed Terrain Following (STF):
+-  Smoothed Terrain Following (STF):
     Small-scale terrain structures are progressively smoothed out of the coordinate system as height increases.
 - Sullivan Terrain Following (name TBD):
     The influence of the terrain decreases with the cube of height.
