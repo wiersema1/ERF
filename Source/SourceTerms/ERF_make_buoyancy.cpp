@@ -70,15 +70,17 @@ void make_buoyancy (Vector<MultiFab>& S_data,
 
             // Base state density and pressure
             const Array4<const Real>&  r0_arr =  r0.const_array(mfi);
-            const Array4<const Real>&  p0_arr =  p0.const_array(mfi);
             const Array4<const Real>& th0_arr = th0.const_array(mfi);
 
             if (solverChoice.moisture_type == MoistureType::None) {
                 ParallelFor(tbz, [=] AMREX_GPU_DEVICE (int i, int j, int k)
                 {
+                    //
+                    // Return -rho0 g (thetaprime / theta0)
+                    //
                     buoyancy_fab(i, j, k) = buoyancy_dry_anelastic(i,j,k,
                                                                    grav_gpu[2],
-                                                                   r0_arr,p0_arr,cell_data);
+                                                                   r0_arr,th0_arr,cell_data);
                 });
             } else {
                 // NOTE: For decomposition in the vertical direction, klo may not
@@ -86,6 +88,9 @@ void make_buoyancy (Vector<MultiFab>& S_data,
                 //       of bounds error since it depends upon the surface theta_l
                 ParallelFor(tbz, [=] AMREX_GPU_DEVICE (int i, int j, int k)
                 {
+                    //
+                    // Return -rho0 g (thetaprime / theta0)
+                    //
                     buoyancy_fab(i, j, k) = buoyancy_moist_anelastic(i,j,k,
                                                                      grav_gpu[2],rv_over_rd,
                                                                      r0_arr,th0_arr,cell_data);
@@ -121,7 +126,7 @@ void make_buoyancy (Vector<MultiFab>& S_data,
 
                     ParallelFor(tbz, [=] AMREX_GPU_DEVICE (int i, int j, int k)
                     {
-                        buoyancy_fab(i, j, k) = buoyancy_type1(i,j,k,n_q_dry,grav_gpu[2],r0_arr,cell_data);
+                        buoyancy_fab(i, j, k) = buoyancy_rhopert(i,j,k,n_q_dry,grav_gpu[2],r0_arr,cell_data);
                     });
                 } // mfi
 
@@ -196,7 +201,7 @@ void make_buoyancy (Vector<MultiFab>& S_data,
 
                 ParallelFor(tbz, [=] AMREX_GPU_DEVICE (int i, int j, int k)
                 {
-                    buoyancy_fab(i, j, k) = buoyancy_type1(i,j,k,n_qstate,
+                    buoyancy_fab(i, j, k) = buoyancy_rhopert(i,j,k,n_qstate,
                                                            grav_gpu[2],r0_arr,cell_data);
                 });
             } // mfi

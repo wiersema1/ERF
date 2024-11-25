@@ -132,7 +132,7 @@ ERF::init_from_metgrid (int lev)
 
     std::unique_ptr<MultiFab>& z_phys = z_phys_nd[lev];
 
-    AMREX_ALWAYS_ASSERT(solverChoice.use_terrain);
+    AMREX_ALWAYS_ASSERT(SolverChoice::terrain_type != TerrainType::None);
 
     z_phys->setVal(0.0);
 
