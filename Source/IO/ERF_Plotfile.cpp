@@ -489,6 +489,24 @@ ERF::WritePlotFile (int which, PlotFileType plotfile_type, Vector<std::string> p
             mf_comp ++;
         }
 
+        if (containerHasElement(plot_var_names, "terrain_IB_mask"))
+        {
+            MultiFab* terrain_blank = m_terrain[lev]->get_terrain_blank_field();
+#ifdef _OPENMP
+#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
+#endif
+            for ( MFIter mfi(mf[lev],TilingIfNotGPU()); mfi.isValid(); ++mfi)
+            {
+                const Box& bx = mfi.tilebox();
+                const Array4<Real>& derdat  = mf[lev].array(mfi);
+                const Array4<Real const>& src = terrain_blank->const_array(mfi);
+                ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+                    derdat(i, j, k, mf_comp) = src(i,j,k);
+                });
+            }
+            mf_comp ++;
+        }
+
 #ifdef ERF_USE_WINDFARM
         if (containerHasElement(plot_var_names, "num_turb") and
             (solverChoice.windfarm_type == WindFarmType::Fitch or solverChoice.windfarm_type == WindFarmType::EWP or

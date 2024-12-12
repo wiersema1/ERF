@@ -690,5 +690,7 @@ struct SolverChoice {
 
     // Flag for valid canopy model
     bool do_forest {false};
+    // Immersed Forcing
+    bool do_terrain {false};
 };
 #endif

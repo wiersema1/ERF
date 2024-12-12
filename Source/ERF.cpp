@@ -141,7 +141,12 @@ ERF::ERF_shared ()
 
     // NOTE: size canopy model before readparams (if file exists, we construct)
     m_forest.resize(nlevs_max);
-    for (int lev = 0; lev < max_level; ++lev) { m_forest[lev] = nullptr; }
+    for (int lev = 0; lev < max_level; ++lev) { m_forest[lev] = nullptr;}
+
+    // Immersed Forcing
+    m_terrain.resize(nlevs_max);
+    for (int lev = 0; lev < max_level; ++lev) { m_terrain[lev] = nullptr;}
+
 
     ReadParameters();
     initializeMicrophysics(nlevs_max);
@@ -1627,6 +1632,15 @@ ERF::ReadParameters ()
         if (solverChoice.do_forest) {
             for (int lev = 0; lev <= max_level; ++lev) {
                 m_forest[lev] = std::make_unique<ForestDrag>(forestfile);
+            }
+        }
+
+        //Query the terrain file name
+        std::string terrainfile;
+        solverChoice.do_terrain = pp.query("terrain_file", terrainfile);
+        if (solverChoice.do_terrain) {
+            for (int lev = 0; lev <= max_level; ++lev) {
+                m_terrain[lev] = std::make_unique<TerrainDrag>(terrainfile);
             }
         }
 
