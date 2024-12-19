@@ -288,6 +288,9 @@ ERF::ERF_shared ()
 
     z_t_rk.resize(nlevs_max);
 
+    // Wall distance
+    walldist.resize(nlevs_max);
+
     // Mapfactors
     mapfac_m.resize(nlevs_max);
     mapfac_u.resize(nlevs_max);
@@ -669,9 +672,7 @@ ERF::InitData_post ()
             AverageDown();
         }
 
-        if ((solverChoice.advChoice.zero_xflux.size() > 0) ||
-            (solverChoice.advChoice.zero_yflux.size() > 0) ||
-            (solverChoice.advChoice.zero_zflux.size() > 0))
+        if (solverChoice.advChoice.have_zero_flux_faces)
         {
             AMREX_ALWAYS_ASSERT_WITH_MESSAGE(finest_level == 0,
                 "Thin immersed body with refinement not currently supported.");

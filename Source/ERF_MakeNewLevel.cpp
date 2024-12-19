@@ -101,7 +101,7 @@ void ERF::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba_in,
     // ********************************************************************************************
     // Thin immersed body
     // *******************************************************************************************
-    init_immersed_body(lev, ba, dm);
+    init_thin_body(lev, ba, dm);
 
     // ********************************************************************************************
     // Initialize the integrator class
@@ -144,6 +144,14 @@ void ERF::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba_in,
     if (solverChoice.do_forest_drag) { m_forest_drag[lev]->define_drag_field(ba, dm, geom[lev], z_phys_nd[lev].get()); }
 
     if (solverChoice.do_terrain_drag) { m_terrain_drag[lev]->define_terrain_blank_field(ba, dm, geom[lev], z_phys_nd[lev].get()); }
+
+    //********************************************************************************************
+    // Create wall distance field for RANS model (depends upon z_phys)
+    // *******************************************************************************************
+    if (solverChoice.turbChoice[lev].rans_type != RANSType::None) {
+        poisson_wall_dist(lev);
+    }
+
     //********************************************************************************************
     // Microphysics
     // *******************************************************************************************
@@ -496,7 +504,7 @@ ERF::ClearLevel (int lev)
 }
 
 void
-ERF::init_immersed_body (int lev, const BoxArray& ba, const DistributionMapping& dm)
+ERF::init_thin_body (int lev, const BoxArray& ba, const DistributionMapping& dm)
 {
     //********************************************************************************************
     // Thin immersed body
@@ -544,7 +552,7 @@ ERF::init_immersed_body (int lev, const BoxArray& ba, const DistributionMapping&
     }
 
     if (solverChoice.advChoice.zero_yflux.size() > 0) {
-        amrex::Print() << "Setting up thin interface boundary for "
+        amrex::Print() << "Setting up thin immersed body for "
             << solverChoice.advChoice.zero_yflux.size() << " yfaces" << std::endl;
         BoxArray ba_yf(ba);
         ba_yf.surroundingNodes(1);
@@ -576,7 +584,7 @@ ERF::init_immersed_body (int lev, const BoxArray& ba, const DistributionMapping&
     }
 
     if (solverChoice.advChoice.zero_zflux.size() > 0) {
-        amrex::Print() << "Setting up thin interface boundary for "
+        amrex::Print() << "Setting up thin immersed body for "
             << solverChoice.advChoice.zero_zflux.size() << " zfaces" << std::endl;
         BoxArray ba_zf(ba);
         ba_zf.surroundingNodes(2);
