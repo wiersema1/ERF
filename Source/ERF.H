@@ -177,6 +177,9 @@ public:
     void project_velocities_tb (int lev, amrex::Real dt, amrex::Vector<amrex::MultiFab >& vars,
                                 amrex::MultiFab& p);
 
+    // Calculate wall distance by solving a Poisson equation
+    void poisson_wall_dist (int lev);
+
 #ifdef ERF_USE_FFT
     void solve_with_fft (int lev, amrex::MultiFab& rhs, amrex::MultiFab& p,
                          amrex::Array<amrex::MultiFab,AMREX_SPACEDIM>& fluxes);
@@ -404,7 +407,7 @@ public:
 
     void init_from_hse (int lev);
 
-    void init_immersed_body (int lev, const amrex::BoxArray& ba, const amrex::DistributionMapping& dm);
+    void init_thin_body (int lev, const amrex::BoxArray& ba, const amrex::DistributionMapping& dm);
 
 #ifdef ERF_USE_MULTIBLOCK
     // constructor used when ERF is created by a multiblock driver
@@ -853,6 +856,9 @@ private:
 
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> z_t_rk;
 
+    // Wall distance function
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>>  walldist;
+
     // Map scale factors
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> mapfac_m;
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> mapfac_u;
@@ -975,11 +981,15 @@ private:
                                                     // Time averaged velocity
                                                     "u_t_avg", "v_t_avg", "w_t_avg", "umag_t_avg",
                                                     // eddy viscosity
+                                                    "nut",
+                                                    // eddy diffusivity of momentum
                                                     "Kmv","Kmh",
                                                     // eddy diffusivity of heat
                                                     "Khv","Khh",
-                                                    // mynn pbl lengthscale
+                                                    // turbulence lengthscale
                                                     "Lturb",
+                                                    // wall distance
+                                                    "walldist",
                                                     // moisture vars
                                                     "qt", "qv", "qc", "qi", "qp", "qrain", "qsnow", "qgraup", "qsat",
                                                     "rain_accum", "snow_accum", "graup_accum",

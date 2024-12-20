@@ -66,7 +66,7 @@ ERF::init_stuff (int lev, const BoxArray& ba, const DistributionMapping& dm,
         ba_nd.surroundingNodes();
 
         // We need this to be one greater than the ghost cells to handle levels > 0
-        int ngrow = ComputeGhostCells(solverChoice.advChoice, solverChoice.use_NumDiff) + 2;
+        int ngrow = ComputeGhostCells(solverChoice.advChoice, solverChoice.use_num_diff) + 2;
         tmp_zphys_nd = std::make_unique<MultiFab>(ba_nd,dm,1,IntVect(ngrow,ngrow,ngrow));
 
         if (solverChoice.terrain_type == TerrainType::Moving) {
@@ -87,16 +87,26 @@ ERF::init_stuff (int lev, const BoxArray& ba, const DistributionMapping& dm,
                z_t_rk[lev] = nullptr;
     }
 
-   // We use these area arrays regardless of terrain, EB or none of the above
-   detJ_cc[lev] = std::make_unique<MultiFab>(ba,dm,1,1);
-        ax[lev] = std::make_unique<MultiFab>(convert(ba,IntVect(1,0,0)),dm,1,1);
-        ay[lev] = std::make_unique<MultiFab>(convert(ba,IntVect(0,1,0)),dm,1,1);
-        az[lev] = std::make_unique<MultiFab>(convert(ba,IntVect(0,0,1)),dm,1,1);
+    // We use these area arrays regardless of terrain, EB or none of the above
+    detJ_cc[lev] = std::make_unique<MultiFab>(ba,dm,1,1);
+         ax[lev] = std::make_unique<MultiFab>(convert(ba,IntVect(1,0,0)),dm,1,1);
+         ay[lev] = std::make_unique<MultiFab>(convert(ba,IntVect(0,1,0)),dm,1,1);
+         az[lev] = std::make_unique<MultiFab>(convert(ba,IntVect(0,0,1)),dm,1,1);
 
-   detJ_cc[lev]->setVal(1.0);
-        ax[lev]->setVal(1.0);
-        ay[lev]->setVal(1.0);
-        az[lev]->setVal(1.0);
+    detJ_cc[lev]->setVal(1.0);
+         ax[lev]->setVal(1.0);
+         ay[lev]->setVal(1.0);
+         az[lev]->setVal(1.0);
+
+    // ********************************************************************************************
+    // Create wall distance array for RANS modeling
+    // ********************************************************************************************
+    if (solverChoice.turbChoice[lev].rans_type != RANSType::None) {
+        walldist[lev] = std::make_unique<MultiFab>(ba,dm,1,1);
+        walldist[lev]->setVal(1e23);
+    } else {
+        walldist[lev] = nullptr;
+    }
 
     // ********************************************************************************************
     // These are the persistent containers for the old and new data
@@ -113,8 +123,8 @@ ERF::init_stuff (int lev, const BoxArray& ba, const DistributionMapping& dm,
     // The number of ghost cells for density must be 1 greater than that for velocity
     //     so that we can go back in forth between velocity and momentum on all faces
     // ********************************************************************************************
-    int ngrow_state = ComputeGhostCells(solverChoice.advChoice, solverChoice.use_NumDiff) + 1;
-    int ngrow_vels  = ComputeGhostCells(solverChoice.advChoice, solverChoice.use_NumDiff);
+    int ngrow_state = ComputeGhostCells(solverChoice.advChoice, solverChoice.use_num_diff) + 1;
+    int ngrow_vels  = ComputeGhostCells(solverChoice.advChoice, solverChoice.use_num_diff);
 
     // ********************************************************************************************
     // New solution data containers
@@ -237,7 +247,7 @@ ERF::init_stuff (int lev, const BoxArray& ba, const DistributionMapping& dm,
 
 #if defined(ERF_USE_WINDFARM)
     //*********************************************************
-    // Variables for Ftich model for windfarm parametrization
+    // Variables for Fitch model for windfarm parametrization
     //*********************************************************
     if (solverChoice.windfarm_type == WindFarmType::Fitch){
         vars_windfarm[lev].define(ba, dm, 5, ngrow_state); // V, dVabsdt, dudt, dvdt, dTKEdt

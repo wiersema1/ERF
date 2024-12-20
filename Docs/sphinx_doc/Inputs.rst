@@ -906,7 +906,7 @@ List of Parameters
 |                                  | viscosity and      | "Constant", or      |              |
 |                                  | diffusivity?       | "ConstantAlpha"     |              |
 +----------------------------------+--------------------+---------------------+--------------+
-| **erf.dynamicViscosity**         | Viscous coeff. if  | Real                | 0.0          |
+| **erf.dynamic_viscosity**        | Viscous coeff. if  | Real                | 0.0          |
 |                                  | DNS                |                     |              |
 +----------------------------------+--------------------+---------------------+--------------+
 | **erf.Cs**                       | Constant           | Real                | 0.0          |
@@ -918,13 +918,11 @@ List of Parameters
 | **erf.Sc_t**                     | Turbulent Schmidt  | Real                | 1.0          |
 |                                  | Number             |                     |              |
 +----------------------------------+--------------------+---------------------+--------------+
-| **erf.use_NumDiff**              | Use 6th order      | "true",             | "false"      |
-|                                  | numerical diffusion| "false"             |              |
-|                                  |                    |                     |              |
-+----------------------------------+--------------------+---------------------+--------------+
-| **erf.NumDiffCoeff**             | Coefficient for    | Real                | 0.0          |
-|                                  | 6th order          | [0.0,  1.0]         |              |
-|                                  | numerical diffusion|                     |              |
+| **erf.num_diff_coeff**           | Coefficient for    | Real                | 0.0          |
+|                                  | 6th-order          | [0.0,  1.0]         |              |
+|                                  | numerical          |                     |              |
+|                                  | diffusion, set to 0|                     |              |
+|                                  | to disable         |                     |              |
 +----------------------------------+--------------------+---------------------+--------------+
 
 Note: in the equations for the evolution of momentum, potential temperature and advected scalars, the
@@ -1089,11 +1087,32 @@ List of Parameters
 | **erf.coriolis_3d**                 | Include z component in | true / false      | true                |
 |                                     | the Coriolis forcing   |                   |                     |
 +-------------------------------------+------------------------+-------------------+---------------------+
-| **erf.use_rayleigh_damping**        | Include explicit       | true / false      | false               |
-|                                     | Rayleigh damping       |                   |                     |
+| **erf.rayleigh_damp_U**             | Include explicit       | true / false      | false               |
+|                                     | Rayleigh damping in    |                   |                     |
+|                                     | the x-momentum equation|                   |                     |
 +-------------------------------------+------------------------+-------------------+---------------------+
-| **erf.nudging_from_input_sounding** | Include explicit       | true / false      | false               |
-|                                     | Rayleigh damping       |                   |                     |
+| **erf.rayleigh_damp_V**             | Include explicit       | true / false      | false               |
+|                                     | Rayleigh damping in    |                   |                     |
+|                                     | the y-momentum equation|                   |                     |
++-------------------------------------+------------------------+-------------------+---------------------+
+| **erf.rayleigh_damp_W**             | Include explicit       | true / false      | false               |
+|                                     | Rayleigh damping in    |                   |                     |
+|                                     | the z-momentum equation|                   |                     |
++-------------------------------------+------------------------+-------------------+---------------------+
+| **erf.rayleigh_damp_T**             | Include explicit       | true / false      | false               |
+|                                     | Rayleigh damping in    |                   |                     |
+|                                     | the potential          |                   |                     |
+|                                     | temperature equation   |                   |                     |
++-------------------------------------+------------------------+-------------------+---------------------+
+| **erf.rayleigh_dampcoef**           | Rayleigh damping       | Real              | 0.2                 |
+|                                     | coefficient, an inverse|                   |                     |
+|                                     | timescale              |                   |                     |
++-------------------------------------+------------------------+-------------------+---------------------+
+| **erf.nudging_from_input_sounding** | Add momentum source    | true / false      | false               |
+|                                     | terms to nudge the     |                   |                     |
+|                                     | solution towards the   |                   |                     |
+|                                     | initial sounding       |                   |                     |
+|                                     | profile                |                   |                     |
 +-------------------------------------+------------------------+-------------------+---------------------+
 | **erf.input_sounding_file**         | Name(s) of the         | String(s)         | input_sounding_file |
 |                                     | input sounding file(s) |                   |                     |
